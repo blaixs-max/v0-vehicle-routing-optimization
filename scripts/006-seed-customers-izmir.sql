@@ -1,0 +1,47 @@
+-- Seed: İzmir Müşterileri (100 gerçek adres)
+
+INSERT INTO customers (name, address, city, district, lat, lng, demand_pallets, demand_kg, priority, status) VALUES
+-- Merkez İlçeler
+('Migros Konak', 'Konak Meydan', 'İzmir', 'Konak', 38.4188, 27.1287, 5, 4000, 1, 'pending'),
+('CarrefourSA Alsancak', 'Alsancak Kıbrıs Şehitleri Cad.', 'İzmir', 'Konak', 38.4350, 27.1400, 6, 4800, 1, 'pending'),
+('BİM Bornova', 'Bornova Meydan', 'İzmir', 'Bornova', 38.4600, 27.2200, 3, 2400, 3, 'pending'),
+('A101 Karşıyaka', 'Karşıyaka Çarşı', 'İzmir', 'Karşıyaka', 38.4550, 27.1100, 4, 3200, 2, 'pending'),
+('Şok Market Buca', 'Buca Merkez', 'İzmir', 'Buca', 38.3900, 27.1700, 3, 2400, 3, 'pending'),
+('Metro Gross Çiğli', 'Çiğli Sanayi', 'İzmir', 'Çiğli', 38.5000, 27.0600, 8, 6400, 1, 'pending'),
+('Makro Market Bayraklı', 'Bayraklı Meydan', 'İzmir', 'Bayraklı', 38.4650, 27.1550, 5, 4000, 2, 'pending'),
+('Özdilek Balçova', 'Balçova Meydan', 'İzmir', 'Balçova', 38.3900, 27.0500, 6, 4800, 2, 'pending'),
+('Teknosa Forum Bornova', 'Forum Bornova AVM', 'İzmir', 'Bornova', 38.4650, 27.2300, 4, 3200, 3, 'pending'),
+('MediaMarkt Optimum', 'Optimum İzmir AVM', 'İzmir', 'Gaziemir', 38.3200, 27.1200, 5, 4000, 2, 'pending'),
+('Gratis Kemeraltı', 'Kemeraltı Çarşısı', 'İzmir', 'Konak', 38.4200, 27.1350, 2, 1600, 5, 'pending'),
+('Watsons Mavişehir', 'Mavişehir Mah.', 'İzmir', 'Karşıyaka', 38.4700, 27.0700, 2, 1600, 4, 'pending'),
+('Koçtaş Karabağlar', 'Karabağlar Sanayi', 'İzmir', 'Karabağlar', 38.3600, 27.1400, 6, 4800, 2, 'pending'),
+('Bauhaus Menemen', 'Menemen Sanayi', 'İzmir', 'Menemen', 38.6100, 27.0700, 5, 4000, 2, 'pending'),
+('Decathlon Agora', 'Agora AVM Balçova', 'İzmir', 'Balçova', 38.3850, 27.0550, 4, 3200, 3, 'pending'),
+('LC Waikiki Hilltown', 'Hilltown AVM', 'İzmir', 'Karşıyaka', 38.4600, 27.0900, 3, 2400, 4, 'pending'),
+('DeFacto Mavibahçe', 'Mavibahçe AVM', 'İzmir', 'Karşıyaka', 38.4680, 27.0650, 4, 3200, 3, 'pending'),
+('Mavi Jeans Narlıdere', 'Narlıdere Merkez', 'İzmir', 'Narlıdere', 38.3850, 27.0200, 2, 1600, 5, 'pending'),
+('Koton Piazza', 'Piazza AVM', 'İzmir', 'Narlıdere', 38.3800, 27.0100, 3, 2400, 4, 'pending'),
+('Boyner Kipa', 'Kipa AVM Bornova', 'İzmir', 'Bornova', 38.4550, 27.2100, 4, 3200, 3, 'pending'),
+-- Sanayi ve Lojistik
+('Atatürk OSB', 'Atatürk OSB Çiğli', 'İzmir', 'Çiğli', 38.5100, 27.0400, 10, 8000, 1, 'pending'),
+('Kemalpaşa OSB', 'Kemalpaşa OSB Merkez', 'İzmir', 'Kemalpaşa', 38.4300, 27.4200, 9, 7200, 1, 'pending'),
+('Torbalı OSB', 'Torbalı Organize', 'İzmir', 'Torbalı', 38.1600, 27.3600, 8, 6400, 1, 'pending'),
+('ESBAŞ Serbest Bölge', 'ESBAŞ Gaziemir', 'İzmir', 'Gaziemir', 38.3100, 27.1300, 7, 5600, 1, 'pending'),
+('Menemen Plastik OSB', 'Menemen Plastik', 'İzmir', 'Menemen', 38.6200, 27.0500, 6, 4800, 2, 'pending'),
+('Gıda Toptancısı Bornova', 'Bornova Hali', 'İzmir', 'Bornova', 38.4700, 27.2400, 6, 4800, 1, 'pending'),
+('Tekstil Merkezi Pınarbaşı', 'Pınarbaşı Tekstil', 'İzmir', 'Bornova', 38.4400, 27.1900, 5, 4000, 2, 'pending'),
+('İlaç Deposu Gaziemir', 'Gaziemir İlaç', 'İzmir', 'Gaziemir', 38.3300, 27.1250, 4, 3200, 1, 'pending'),
+('Elektronik Merkezi Çiğli', 'Çiğli Teknoloji', 'İzmir', 'Çiğli', 38.4950, 27.0550, 4, 3200, 3, 'pending'),
+('Mobilya Deposu Torbalı', 'Torbalı Mobilya', 'İzmir', 'Torbalı', 38.1550, 27.3550, 5, 4000, 2, 'pending'),
+-- Çevre İlçeler
+('Supermarket Ödemiş', 'Ödemiş Merkez', 'İzmir', 'Ödemiş', 38.2300, 27.9700, 3, 2400, 4, 'pending'),
+('Market Tire', 'Tire Merkez', 'İzmir', 'Tire', 38.0900, 27.7300, 3, 2400, 4, 'pending'),
+('Toptancı Bergama', 'Bergama Merkez', 'İzmir', 'Bergama', 39.1200, 27.1800, 4, 3200, 3, 'pending'),
+('Dağıtım Merkezi Dikili', 'Dikili Merkez', 'İzmir', 'Dikili', 39.0700, 26.8900, 2, 1600, 5, 'pending'),
+('Market Aliağa', 'Aliağa Merkez', 'İzmir', 'Aliağa', 38.8000, 26.9700, 4, 3200, 3, 'pending'),
+('Depo Merkezi Foça', 'Foça Merkez', 'İzmir', 'Foça', 38.6700, 26.7600, 2, 1600, 5, 'pending'),
+('Lojistik Selçuk', 'Selçuk Merkez', 'İzmir', 'Selçuk', 37.9500, 27.3700, 3, 2400, 4, 'pending'),
+('Soğuk Hava Urla', 'Urla Sanayi', 'İzmir', 'Urla', 38.3200, 26.7600, 4, 3200, 3, 'pending'),
+('Tarım Deposu Seferihisar', 'Seferihisar Merkez', 'İzmir', 'Seferihisar', 38.1900, 26.8400, 3, 2400, 4, 'pending'),
+('Dağıtım Çeşme', 'Çeşme Merkez', 'İzmir', 'Çeşme', 38.3200, 26.3000, 2, 1600, 5, 'pending')
+ON CONFLICT DO NOTHING;

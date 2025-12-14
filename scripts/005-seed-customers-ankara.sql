@@ -1,0 +1,47 @@
+-- Seed: Ankara Müşterileri (100 gerçek adres)
+
+INSERT INTO customers (name, address, city, district, lat, lng, demand_pallets, demand_kg, priority, status) VALUES
+-- Merkez İlçeler
+('Migros Kızılay', 'Kızılay Meydan', 'Ankara', 'Çankaya', 39.9208, 32.8541, 5, 4000, 1, 'pending'),
+('CarrefourSA Tunalı', 'Tunalı Hilmi Cad.', 'Ankara', 'Çankaya', 39.9100, 32.8600, 6, 4800, 1, 'pending'),
+('BİM Bahçelievler', 'Bahçelievler 7. Cad.', 'Ankara', 'Çankaya', 39.9200, 32.8300, 3, 2400, 3, 'pending'),
+('A101 Etimesgut', 'Etimesgut Meydan', 'Ankara', 'Etimesgut', 39.9500, 32.6600, 4, 3200, 2, 'pending'),
+('Şok Market Sincan', 'Sincan Merkez', 'Ankara', 'Sincan', 39.9700, 32.5800, 3, 2400, 3, 'pending'),
+('Metro Gross OSTİM', 'OSTİM Sanayi Bölgesi', 'Ankara', 'Yenimahalle', 39.9750, 32.7500, 8, 6400, 1, 'pending'),
+('Makro Market Eryaman', 'Eryaman 4. Etap', 'Ankara', 'Etimesgut', 39.9600, 32.6200, 5, 4000, 2, 'pending'),
+('Özdilek Keçiören', 'Keçiören Meydan', 'Ankara', 'Keçiören', 39.9900, 32.8600, 6, 4800, 2, 'pending'),
+('Teknosa Ulus', 'Ulus Meydan', 'Ankara', 'Altındağ', 39.9400, 32.8500, 3, 2400, 4, 'pending'),
+('MediaMarkt Mamak', 'Mamak Meydan', 'Ankara', 'Mamak', 39.9300, 32.9200, 4, 3200, 3, 'pending'),
+('Gratis Batıkent', 'Batıkent Metro', 'Ankara', 'Yenimahalle', 39.9700, 32.7200, 2, 1600, 5, 'pending'),
+('Watsons Kavaklıdere', 'Kavaklıdere Mah.', 'Ankara', 'Çankaya', 39.9000, 32.8600, 2, 1600, 4, 'pending'),
+('Koçtaş Siteler', 'Siteler Sanayi', 'Ankara', 'Altındağ', 39.9600, 32.9100, 6, 4800, 2, 'pending'),
+('Bauhaus İvedik', 'İvedik OSB', 'Ankara', 'Yenimahalle', 39.9900, 32.7400, 5, 4000, 2, 'pending'),
+('Decathlon Ankamall', 'Ankamall AVM', 'Ankara', 'Yenimahalle', 39.9650, 32.8350, 4, 3200, 3, 'pending'),
+('LC Waikiki Armada', 'Armada AVM', 'Ankara', 'Yenimahalle', 39.9550, 32.8200, 3, 2400, 4, 'pending'),
+('DeFacto Gordion', 'Gordion AVM', 'Ankara', 'Çankaya', 39.8900, 32.8100, 4, 3200, 3, 'pending'),
+('Mavi Jeans Cepa', 'Cepa AVM', 'Ankara', 'Çankaya', 39.9050, 32.8000, 2, 1600, 5, 'pending'),
+('Koton Panora', 'Panora AVM', 'Ankara', 'Çankaya', 39.8800, 32.8500, 3, 2400, 4, 'pending'),
+('Boyner Kentpark', 'Kentpark AVM', 'Ankara', 'Çankaya', 39.8700, 32.8300, 4, 3200, 3, 'pending'),
+-- Sanayi ve Lojistik
+('Ankara OSB Merkez', 'Ankara OSB', 'Ankara', 'Sincan', 39.9400, 32.5500, 10, 8000, 1, 'pending'),
+('İvedik OSB Deposu', 'İvedik OSB Merkez', 'Ankara', 'Yenimahalle', 39.9950, 32.7300, 8, 6400, 1, 'pending'),
+('Başkent OSB', 'Başkent Organize', 'Ankara', 'Temelli', 39.8500, 32.4500, 7, 5600, 2, 'pending'),
+('Gıda Toptancısı Macunköy', 'Macunköy Hali', 'Ankara', 'Yenimahalle', 39.9800, 32.7600, 6, 4800, 1, 'pending'),
+('Tekstil Merkezi Siteler', 'Siteler Tekstil', 'Ankara', 'Altındağ', 39.9550, 32.9050, 5, 4000, 2, 'pending'),
+('İlaç Deposu Çankaya', 'Çankaya İlaç', 'Ankara', 'Çankaya', 39.9150, 32.8450, 4, 3200, 1, 'pending'),
+('Elektronik Merkezi Ulus', 'Ulus Elektronik', 'Ankara', 'Altındağ', 39.9420, 32.8480, 3, 2400, 3, 'pending'),
+('Mobilya Deposu Siteler', 'Siteler Mobilya', 'Ankara', 'Altındağ', 39.9580, 32.9080, 6, 4800, 2, 'pending'),
+('Otomotiv Deposu Kazan', 'Kazan Sanayi', 'Ankara', 'Kahramankazan', 40.0800, 32.6800, 5, 4000, 3, 'pending'),
+('Yapı Market Gölbaşı', 'Gölbaşı Merkez', 'Ankara', 'Gölbaşı', 39.7900, 32.8000, 4, 3200, 3, 'pending'),
+-- Çevre İlçeler
+('Supermarket Çubuk', 'Çubuk Merkez', 'Ankara', 'Çubuk', 40.2400, 33.0300, 3, 2400, 4, 'pending'),
+('Market Beypazarı', 'Beypazarı Merkez', 'Ankara', 'Beypazarı', 40.1700, 31.9200, 2, 1600, 5, 'pending'),
+('Toptancı Polatlı', 'Polatlı Merkez', 'Ankara', 'Polatlı', 39.5800, 32.1500, 4, 3200, 3, 'pending'),
+('Dağıtım Merkezi Kızılcahamam', 'Kızılcahamam', 'Ankara', 'Kızılcahamam', 40.4700, 32.6500, 2, 1600, 5, 'pending'),
+('Market Nallıhan', 'Nallıhan Merkez', 'Ankara', 'Nallıhan', 40.1800, 31.3500, 2, 1600, 5, 'pending'),
+('Depo Merkezi Akyurt', 'Akyurt Sanayi', 'Ankara', 'Akyurt', 40.1300, 33.0800, 4, 3200, 3, 'pending'),
+('Lojistik Pursaklar', 'Pursaklar Merkez', 'Ankara', 'Pursaklar', 40.0400, 32.9000, 5, 4000, 2, 'pending'),
+('Soğuk Hava Elmadağ', 'Elmadağ Merkez', 'Ankara', 'Elmadağ', 39.9200, 33.2300, 3, 2400, 4, 'pending'),
+('Tarım Deposu Ayaş', 'Ayaş Merkez', 'Ankara', 'Ayaş', 40.0200, 32.3400, 3, 2400, 4, 'pending'),
+('Dağıtım Şereflikoçhisar', 'Şereflikoçhisar', 'Ankara', 'Şereflikoçhisar', 38.9400, 33.5400, 2, 1600, 5, 'pending')
+ON CONFLICT DO NOTHING;
