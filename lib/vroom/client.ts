@@ -181,42 +181,28 @@ export class VroomClient {
 
     // Araclar
     const vroomVehicles: VroomVehicle[] = vehicles
-      .filter((v) => v.status === "active")
+      .filter((v) => v.status === "active" || v.status === "available")
       .map((vehicle, index) => {
         const depot = depots.find((d) => d.id === vehicle.depot_id)
         if (!depot) {
-          throw new Error(`Depot bulunamadi: ${vehicle.depot_id}`)
+          console.warn(`Depot bulunamadi: ${vehicle.depot_id}, varsayilan depo kullaniliyor`)
+          // Varsayilan olarak ilk depoyu kullan
+          const defaultDepot = depots[0]
+          if (!defaultDepot) {
+            throw new Error("Hic depo bulunamadi")
+          }
+          return createVroomVehicle(vehicle, defaultDepot, index, options)
         }
-
-        // Kapasite kullanim oranina gore efektif kapasite
-        const effectiveCapacity = Math.floor(
-          (vehicle.capacity_pallet || vehicle.capacity_pallets || 12) * (options.vehicleCapacityUtilization || 0.9),
-        )
-
-        const vroomVehicle: VroomVehicle = {
-          id: index + 1,
-          description: vehicle.id,
-          profile: vehicle.vehicle_type === "tir" ? "truck" : "car",
-          start: [depot.lng, depot.lat],
-          end: [depot.lng, depot.lat], // Depoya don
-          capacity: [effectiveCapacity],
-          speed_factor: (vehicle.avg_speed_kmh || 60) / 60, // Normalize
-          costs: {
-            fixed: Math.round((vehicle.fixed_daily_cost || 500) * 100),
-            per_km: Math.round((vehicle.cost_per_km || 2) * 100),
-          },
-        }
-
-        // Kisitlamalar
-        if (options.maxRouteDistanceKm) {
-          vroomVehicle.max_distance = options.maxRouteDistanceKm * 1000
-        }
-        if (options.maxRouteTimeMin) {
-          vroomVehicle.max_travel_time = options.maxRouteTimeMin * 60
-        }
-
-        return vroomVehicle
+        return createVroomVehicle(vehicle, depot, index, options)
       })
+
+    if (vroomVehicles.length === 0) {
+      throw new Error("Kullanilabilir arac bulunamadi. Arac statusu 'active' veya 'available' olmali.")
+    }
+
+    if (jobs.length === 0) {
+      throw new Error("Atanacak musteri bulunamadi.")
+    }
 
     return {
       jobs,
@@ -279,7 +265,9 @@ export class VroomClient {
     customers.forEach((c, i) => customerMap.set(i + 1, c))
 
     const vehicleMap = new Map<number, Vehicle>()
-    vehicles.filter((v) => v.status === "active").forEach((v, i) => vehicleMap.set(i + 1, v))
+    vehicles
+      .filter((v) => v.status === "active" || v.status === "available")
+      .forEach((v, i) => vehicleMap.set(i + 1, v))
 
     // Rotalari parse et
     const routes: OptimizedRoute[] = response.routes.map((route) => {
@@ -402,10 +390,25 @@ export class VroomClient {
     options: OptimizationParams,
   ): Promise<OptimizationResult> {
     try {
+      if (!depots.length) {
+        throw new Error("Depo bulunamadi")
+      }
+      if (!vehicles.length) {
+        throw new Error("Arac bulunamadi")
+      }
+      if (!customers.length) {
+        throw new Error("Musteri bulunamadi")
+      }
+
       const request = this.buildRequest(depots, vehicles, customers, options)
+      console.log("[v0] VROOM Request:", JSON.stringify(request, null, 2))
+
       const response = await this.optimize(request)
+      console.log("[v0] VROOM Response:", JSON.stringify(response, null, 2))
+
       return this.parseResponse(response, depots, vehicles, customers, options)
     } catch (error) {
+      console.error("[v0] VROOM Error:", error)
       return {
         success: false,
         error: error instanceof Error ? error.message : "Bilinmeyen hata",
@@ -426,6 +429,37 @@ export class VroomClient {
       }
     }
   }
+}
+
+function createVroomVehicle(vehicle: Vehicle, depot: Depot, index: number, options: OptimizationParams): VroomVehicle {
+  // Kapasite kullanim oranina gore efektif kapasite
+  const effectiveCapacity = Math.floor(
+    (vehicle.capacity_pallet || vehicle.capacity_pallets || 12) * (options.vehicleCapacityUtilization || 0.9),
+  )
+
+  const vroomVehicle: VroomVehicle = {
+    id: index + 1,
+    description: vehicle.id,
+    profile: "car", // VROOM public demo sadece "car" destekliyor
+    start: [depot.lng, depot.lat],
+    end: [depot.lng, depot.lat], // Depoya don
+    capacity: [effectiveCapacity],
+    speed_factor: 1, // Varsayilan hiz
+    costs: {
+      fixed: Math.round((vehicle.fixed_daily_cost || 500) * 100),
+      per_km: Math.round((vehicle.cost_per_km || 2) * 100),
+    },
+  }
+
+  // Kisitlamalar
+  if (options.maxRouteDistanceKm) {
+    vroomVehicle.max_distance = options.maxRouteDistanceKm * 1000
+  }
+  if (options.maxRouteTimeMin) {
+    vroomVehicle.max_travel_time = options.maxRouteTimeMin * 60
+  }
+
+  return vroomVehicle
 }
 
 // Haversine mesafe hesaplama

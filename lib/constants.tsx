@@ -60,8 +60,7 @@ export const VROOM_CONFIG = {
   publicUrl: "https://vroom.project-osrm.org",
   // Self-hosted VROOM URL
   selfHostedUrl: process.env.NEXT_PUBLIC_VROOM_URL || "http://localhost:3000",
-  // Use self-hosted if available
-  baseUrl: process.env.NEXT_PUBLIC_VROOM_URL || "https://vroom.project-osrm.org",
+  url: process.env.NEXT_PUBLIC_VROOM_URL || "https://vroom.project-osrm.org",
 }
 
 // Fuel price (TL per liter)

@@ -3,24 +3,47 @@
 import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { RoutesMap } from "@/components/routes/routes-map"
-import { RoutesList } from "@/components/routes/routes-list"
 import { RouteDetails } from "@/components/routes/route-details"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { supabase } from "@/lib/supabase/client"
 import { mockDepots } from "@/lib/mock-data"
-import type { Route, Depot } from "@/lib/types"
-import { MapPin, Truck, Clock, TrendingDown, RefreshCw, Filter } from "lucide-react"
+import { getOptimizationResult } from "@/lib/route-store"
+import type { Depot } from "@/lib/types"
+import { MapPin, Truck, Clock, TrendingDown, RefreshCw, Filter, AlertCircle } from "lucide-react"
+import Link from "next/link"
+
+interface RouteData {
+  id: string
+  vehicle_id: string
+  vehicle_plate?: string
+  depot_id: string
+  depot_name?: string
+  status: string
+  total_distance_km: number
+  total_duration_min: number
+  total_cost: number
+  stops: Array<{
+    id: string
+    sequence: number
+    customer_id: string
+    customer_name?: string
+    lat?: number
+    lng?: number
+    address?: string
+    demand?: number
+    arrival_time?: string
+  }>
+}
 
 export default function RoutesPage() {
-  const [routes, setRoutes] = useState<Route[]>([])
+  const [routes, setRoutes] = useState<RouteData[]>([])
   const [depots, setDepots] = useState<Depot[]>([])
   const [selectedDepot, setSelectedDepot] = useState<string>("all")
-  const [selectedRoute, setSelectedRoute] = useState<Route | null>(null)
+  const [selectedRoute, setSelectedRoute] = useState<RouteData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<"map" | "list">("map")
-  const [isDemo, setIsDemo] = useState(false)
+  const [viewMode, setViewMode] = useState<"map" | "list">("list")
+  const [lastOptimization, setLastOptimization] = useState<string | null>(null)
 
   useEffect(() => {
     fetchData()
@@ -29,36 +52,47 @@ export default function RoutesPage() {
   const fetchData = async () => {
     setLoading(true)
 
-    if (!supabase) {
-      setDepots(mockDepots as Depot[])
+    const result = getOptimizationResult()
+
+    if (result && result.routes && result.routes.length > 0) {
+      // Optimize sonuclari mevcut
+      const mappedRoutes: RouteData[] = result.routes.map((route: any, index: number) => ({
+        id: route.id || `route-${index}`,
+        vehicle_id: route.vehicle_id || `vehicle-${index}`,
+        vehicle_plate: route.vehicle_plate || route.vehiclePlate || `Arac ${index + 1}`,
+        depot_id: route.depot_id || "depot-1",
+        depot_name: route.depot_name || route.depotName || "Ana Depo",
+        status: route.status || "pending",
+        total_distance_km: route.total_distance_km ?? route.distance ?? route.totalDistance ?? 0,
+        total_duration_min: route.total_duration_min ?? route.duration ?? route.totalDuration ?? 0,
+        total_cost: route.total_cost ?? route.cost ?? route.totalCost ?? 0,
+        stops: (route.stops || []).map((stop: any, idx: number) => ({
+          id: stop.id || `stop-${idx}`,
+          sequence: stop.sequence || idx + 1,
+          customer_id: stop.customer_id || stop.customerId || `customer-${idx}`,
+          customer_name: stop.customer_name || stop.customerName || stop.name || `Musteri ${idx + 1}`,
+          lat: stop.lat || stop.latitude,
+          lng: stop.lng || stop.longitude,
+          address: stop.address || "",
+          demand: stop.demand || 0,
+          arrival_time: stop.arrival_time || stop.arrivalTime,
+        })),
+      }))
+
+      // Depo filtreleme
+      const filteredRoutes =
+        selectedDepot === "all"
+          ? mappedRoutes
+          : mappedRoutes.filter((r) => r.depot_id === selectedDepot || r.depot_name === selectedDepot)
+
+      setRoutes(filteredRoutes)
+      setLastOptimization(result.optimizedAt ? new Date(result.optimizedAt).toLocaleString("tr-TR") : null)
+    } else {
       setRoutes([])
-      setIsDemo(true)
-      setLoading(false)
-      return
     }
 
-    try {
-      const { data: depotsData } = await supabase.from("depots").select("*").eq("status", "active")
-      if (depotsData) setDepots(depotsData)
-
-      let routesQuery = supabase
-        .from("routes")
-        .select(`*, vehicle:vehicles(*), depot:depots(*), stops:route_stops(*, customer:customers(*))`)
-        .order("created_at", { ascending: false })
-
-      if (selectedDepot !== "all") {
-        routesQuery = routesQuery.eq("depot_id", selectedDepot)
-      }
-
-      const { data: routesData } = await routesQuery
-      if (routesData) setRoutes(routesData)
-    } catch (error) {
-      console.error("Error fetching data:", error)
-      setDepots(mockDepots as Depot[])
-      setIsDemo(true)
-    } finally {
-      setLoading(false)
-    }
+    setDepots(mockDepots as Depot[])
+    setLoading(false)
   }
 
   const stats = {
@@ -77,7 +111,7 @@ export default function RoutesPage() {
           <div>
             <h1 className="text-xl font-bold text-slate-900">Rotalar</h1>
             <p className="text-sm text-slate-500">
-              {isDemo ? "Demo modu - Ornek veriler" : "Optimize edilmis rotalari goruntuле ve yonet"}
+              {lastOptimization ? `Son optimizasyon: ${lastOptimization}` : "Henuz optimizasyon yapilmadi"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -168,29 +202,129 @@ export default function RoutesPage() {
         </div>
 
         {/* Main Content */}
-        <div className="flex flex-1 min-h-[500px]">
-          {viewMode === "map" ? (
-            <>
-              <div className="flex-1 min-h-[500px]">
-                <RoutesMap
-                  routes={routes}
-                  depots={depots}
-                  selectedRoute={selectedRoute}
-                  onRouteSelect={setSelectedRoute}
-                />
+        {routes.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center bg-slate-50 p-8">
+            <div className="text-center max-w-md">
+              <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="w-8 h-8 text-amber-600" />
               </div>
-              {selectedRoute && (
-                <div className="w-96 border-l border-slate-200 overflow-y-auto bg-white max-h-[calc(100vh-300px)]">
-                  <RouteDetails route={selectedRoute} onClose={() => setSelectedRoute(null)} />
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex-1 p-4 bg-slate-50">
-              <RoutesList routes={routes} selectedRoute={selectedRoute} onRouteSelect={setSelectedRoute} />
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Henuz Rota Yok</h3>
+              <p className="text-slate-500 mb-6">
+                Rotalari goruntulemek icin once Optimizasyon sayfasindan rota olusturun.
+              </p>
+              <Link href="/optimize">
+                <Button className="bg-emerald-600 hover:bg-emerald-700">
+                  <Truck className="w-4 h-4 mr-2" />
+                  Rotalari Optimize Et
+                </Button>
+              </Link>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex flex-1 min-h-[500px]">
+            {viewMode === "map" ? (
+              <>
+                <div className="flex-1 min-h-[500px]">
+                  <RoutesMap
+                    routes={routes as any}
+                    depots={depots}
+                    selectedRoute={selectedRoute as any}
+                    onRouteSelect={setSelectedRoute as any}
+                  />
+                </div>
+                {selectedRoute && (
+                  <div className="w-96 border-l border-slate-200 overflow-y-auto bg-white max-h-[calc(100vh-300px)]">
+                    <RouteDetails route={selectedRoute as any} onClose={() => setSelectedRoute(null)} />
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex-1 p-4 bg-slate-50 overflow-auto">
+                <div className="grid gap-4">
+                  {routes.map((route, index) => (
+                    <Card
+                      key={route.id}
+                      className={`border cursor-pointer transition-all hover:shadow-md ${
+                        selectedRoute?.id === route.id ? "border-emerald-500 bg-emerald-50" : "border-slate-200"
+                      }`}
+                      onClick={() => setSelectedRoute(route)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <div
+                              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+                              style={{ backgroundColor: `hsl(${(index * 45) % 360}, 70%, 50%)` }}
+                            >
+                              {index + 1}
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-slate-900">{route.vehicle_plate}</h3>
+                              <p className="text-sm text-slate-500">{route.depot_name}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-6">
+                            <div className="text-center">
+                              <p className="text-lg font-bold text-slate-900">
+                                {route.total_distance_km.toFixed(1)} km
+                              </p>
+                              <p className="text-xs text-slate-500">Mesafe</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-lg font-bold text-slate-900">
+                                {Math.round(route.total_duration_min)} dk
+                              </p>
+                              <p className="text-xs text-slate-500">Sure</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-lg font-bold text-slate-900">{route.stops.length}</p>
+                              <p className="text-xs text-slate-500">Durak</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-lg font-bold text-emerald-600">
+                                {route.total_cost.toLocaleString("tr-TR")} TL
+                              </p>
+                              <p className="text-xs text-slate-500">Maliyet</p>
+                            </div>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                route.status === "completed"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : route.status === "in_progress"
+                                    ? "bg-blue-100 text-blue-700"
+                                    : "bg-amber-100 text-amber-700"
+                              }`}
+                            >
+                              {route.status === "completed"
+                                ? "Tamamlandi"
+                                : route.status === "in_progress"
+                                  ? "Devam Ediyor"
+                                  : "Bekliyor"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Durak listesi */}
+                        {selectedRoute?.id === route.id && route.stops.length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-slate-200">
+                            <p className="text-sm font-medium text-slate-700 mb-2">Duraklar:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {route.stops.map((stop, idx) => (
+                                <span key={stop.id} className="px-2 py-1 bg-slate-100 rounded text-sm text-slate-600">
+                                  {idx + 1}. {stop.customer_name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </DashboardLayout>
   )

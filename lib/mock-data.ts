@@ -212,6 +212,20 @@ export const mockVehicles: Vehicle[] = [
 ]
 
 export const mockCustomers: Customer[] = [
+  {
+    id: "c-0",
+    name: "Test Musteri (Koordinatsiz)",
+    address: "Kadikoy, Moda Cad. No:50",
+    city: "Istanbul",
+    lat: 0,
+    lng: 0,
+    demand_pallet: 3,
+    demand_pallets: 3,
+    demand_kg: 1500,
+    priority: 4,
+    status: "pending",
+    assigned_depot_id: "depot-1",
+  },
   // İstanbul Müşterileri
   {
     id: "c-1",

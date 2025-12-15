@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { mockCustomers, mockDepots } from "@/lib/mock-data"
+import { getCustomerCoordinates } from "@/lib/customer-store"
 import type { Customer, Depot } from "@/lib/types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -30,16 +31,30 @@ export function CustomersTable() {
 
   useEffect(() => {
     fetchData()
+
+    const handleCoordinateUpdate = () => {
+      fetchData()
+    }
+    window.addEventListener("customer-coordinates-updated", handleCoordinateUpdate)
+    return () => {
+      window.removeEventListener("customer-coordinates-updated", handleCoordinateUpdate)
+    }
   }, [])
 
   async function fetchData() {
     const supabase = createClient()
 
     if (!supabase) {
-      const customersWithDepot = mockCustomers.map((c) => ({
-        ...c,
-        assigned_depot: mockDepots.find((d) => d.id === c.assigned_depot_id),
-      }))
+      const savedCoords = getCustomerCoordinates()
+      const customersWithDepot = mockCustomers.map((c) => {
+        const saved = savedCoords[c.id]
+        return {
+          ...c,
+          lat: saved?.lat ?? c.lat,
+          lng: saved?.lng ?? c.lng,
+          assigned_depot: mockDepots.find((d) => d.id === c.assigned_depot_id),
+        }
+      })
       setCustomers(customersWithDepot)
       setDepots(mockDepots)
       setIsDemo(true)
@@ -55,10 +70,16 @@ export function CustomersTable() {
     if (customersRes.data) {
       setCustomers(customersRes.data as (Customer & { assigned_depot: Depot | null })[])
     } else {
-      const customersWithDepot = mockCustomers.map((c) => ({
-        ...c,
-        assigned_depot: mockDepots.find((d) => d.id === c.assigned_depot_id),
-      }))
+      const savedCoords = getCustomerCoordinates()
+      const customersWithDepot = mockCustomers.map((c) => {
+        const saved = savedCoords[c.id]
+        return {
+          ...c,
+          lat: saved?.lat ?? c.lat,
+          lng: saved?.lng ?? c.lng,
+          assigned_depot: mockDepots.find((d) => d.id === c.assigned_depot_id),
+        }
+      })
       setCustomers(customersWithDepot)
       setIsDemo(true)
     }
@@ -96,6 +117,8 @@ export function CustomersTable() {
   const paginatedCustomers = filteredCustomers.slice(page * pageSize, (page + 1) * pageSize)
   const totalPages = Math.ceil(filteredCustomers.length / pageSize)
 
+  const missingCoordsCount = customers.filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0).length
+
   if (loading) {
     return <Card className="mt-6 p-8 text-center text-muted-foreground">Yükleniyor...</Card>
   }
@@ -107,6 +130,16 @@ export function CustomersTable() {
           <AlertTriangle className="h-4 w-4 text-amber-500" />
           <AlertDescription className="text-amber-500">
             Demo modu aktif. Supabase bağlantısı için environment variables ekleyin.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {missingCoordsCount > 0 && (
+        <Alert className="mt-4 border-orange-500/50 bg-orange-500/10">
+          <MapPin className="h-4 w-4 text-orange-500" />
+          <AlertDescription className="text-orange-600 dark:text-orange-400">
+            <strong>{missingCoordsCount} müşteri</strong> için koordinat bilgisi eksik. Optimizasyon sayfasından
+            koordinat girebilirsiniz.
           </AlertDescription>
         </Alert>
       )}
@@ -183,62 +216,72 @@ export function CustomersTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedCustomers.map((customer) => (
-              <TableRow key={customer.id}>
-                <TableCell className="font-medium">{customer.name}</TableCell>
-                <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{customer.address}</TableCell>
-                <TableCell>{customer.city}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground font-mono">
-                    <MapPin className="h-3 w-3" />
-                    {customer.lat.toFixed(4)}, {customer.lng.toFixed(4)}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <span className="font-medium">{customer.demand_pallet || customer.demand_pallets}</span>
-                  <span className="text-muted-foreground text-sm"> palet</span>
-                </TableCell>
-                <TableCell>
-                  <Badge className={`${PRIORITY_LABELS[customer.priority]?.color || "bg-gray-500"} text-white`}>
-                    {PRIORITY_LABELS[customer.priority]?.label || `P${customer.priority}`}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {customer.assigned_depot ? (
-                    <Badge
-                      variant="outline"
-                      style={{
-                        borderColor: DEPOT_COLORS[customer.assigned_depot.city]?.primary,
-                        color: DEPOT_COLORS[customer.assigned_depot.city]?.primary,
-                      }}
-                    >
-                      {customer.assigned_depot.city}
+            {paginatedCustomers.map((customer) => {
+              const hasValidCoords = customer.lat && customer.lng && customer.lat !== 0 && customer.lng !== 0
+              return (
+                <TableRow key={customer.id}>
+                  <TableCell className="font-medium">{customer.name}</TableCell>
+                  <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{customer.address}</TableCell>
+                  <TableCell>{customer.city}</TableCell>
+                  <TableCell>
+                    {hasValidCoords ? (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground font-mono">
+                        <MapPin className="h-3 w-3 text-green-500" />
+                        {customer.lat.toFixed(4)}, {customer.lng.toFixed(4)}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-xs text-orange-500">
+                        <AlertTriangle className="h-3 w-3" />
+                        Koordinat Eksik
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-medium">{customer.demand_pallet || customer.demand_pallets}</span>
+                    <span className="text-muted-foreground text-sm"> palet</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={`${PRIORITY_LABELS[customer.priority]?.color || "bg-gray-500"} text-white`}>
+                      {PRIORITY_LABELS[customer.priority]?.label || `P${customer.priority}`}
                     </Badge>
-                  ) : (
-                    <Badge variant="outline">Atanmamış</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setEditingCustomer(customer)}>
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Düzenle
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive" onClick={() => deleteCustomer(customer.id)}>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Sil
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell>
+                    {customer.assigned_depot ? (
+                      <Badge
+                        variant="outline"
+                        style={{
+                          borderColor: DEPOT_COLORS[customer.assigned_depot.city]?.primary,
+                          color: DEPOT_COLORS[customer.assigned_depot.city]?.primary,
+                        }}
+                      >
+                        {customer.assigned_depot.city}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">Atanmamış</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setEditingCustomer(customer)}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Düzenle
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onClick={() => deleteCustomer(customer.id)}>
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Sil
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
 

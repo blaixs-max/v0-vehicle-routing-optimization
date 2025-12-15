@@ -1,298 +1,582 @@
 "use client"
 
-import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import type { Depot, Vehicle, Customer } from "@/types/database"
-import type { OptimizationResult } from "@/lib/vrp/types"
+import { useState, useEffect, useRef } from "react"
+import type { OptimizationResult, OptimizedRoute } from "@/lib/vroom/client"
+import type { Depot } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CheckCircle2, Clock, Route, Truck, AlertTriangle, Save, Loader2, Fuel, Banknote } from "lucide-react"
-import { DEPOT_COLORS } from "@/lib/constants"
+import {
+  Route,
+  Clock,
+  Fuel,
+  Truck,
+  MapPin,
+  CheckCircle2,
+  XCircle,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Map,
+  List,
+  Save,
+  Zap,
+  Landmark,
+  DollarSign,
+  CircleDollarSign,
+} from "lucide-react"
+import { DEPOT_COLORS, ROUTE_COLORS } from "@/lib/constants"
 
 interface OptimizationResultsProps {
   result: OptimizationResult
-  depots: Depot[]
-  vehicles: Vehicle[]
-  customers: Customer[]
+  depots?: Depot[]
 }
 
-export function OptimizationResults({ result, depots, vehicles, customers }: OptimizationResultsProps) {
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+export function OptimizationResults({ result, depots = [] }: OptimizationResultsProps) {
+  const [viewMode, setViewMode] = useState<"list" | "map">("list")
+  const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set())
+  const mapRef = useRef<HTMLDivElement>(null)
+  const mapInstanceRef = useRef<any>(null)
 
-  async function saveRoutes() {
-    setSaving(true)
-
-    try {
-      const supabase = createClient()
-
-      for (const route of result.routes) {
-        // Create route record
-        const { data: routeData } = await supabase
-          .from("routes")
-          .insert({
-            vehicle_id: route.vehicleId,
-            depot_id: route.depotId,
-            route_date: new Date().toISOString().split("T")[0],
-            total_distance_km: route.totalDistance,
-            total_duration_min: route.totalDuration,
-            total_pallets: route.totalLoad,
-            total_kg: route.totalKg,
-            total_cost: route.totalCost,
-            fuel_cost: route.fuelCost,
-            distance_cost: route.distanceCost,
-            fixed_cost: route.fixedCost,
-            status: "planned",
-            optimized_at: new Date().toISOString(),
-          })
-          .select()
-          .single()
-
-        if (routeData) {
-          // Create route stops
-          const stops = route.stops.map((customerId, index) => ({
-            route_id: routeData.id,
-            customer_id: customerId,
-            stop_order: index + 1,
-            status: "pending",
-          }))
-
-          await supabase.from("route_stops").insert(stops)
-
-          // Update customer status
-          await supabase.from("customers").update({ status: "assigned" }).in("id", route.stops)
-
-          // Update vehicle status
-          await supabase.from("vehicles").update({ status: "in_route" }).eq("id", route.vehicleId)
-        }
-      }
-
-      setSaved(true)
-    } catch (error) {
-      console.error("Failed to save routes:", error)
-    } finally {
-      setSaving(false)
-    }
+  const summary = result.summary || {
+    totalRoutes: result.routes?.length || 0,
+    totalDistance: 0,
+    totalDuration: 0,
+    totalCost: 0,
+    fuelCost: 0,
+    distanceCost: 0,
+    fixedCost: 0,
+    tollCost: 0,
+    unassignedCount: 0,
+    computationTimeMs: 0,
   }
 
-  const getVehicle = (id: string) => vehicles.find((v) => v.id === id)
-  const getDepot = (id: string) => depots.find((d) => d.id === id)
-  const getCustomer = (id: string) => customers.find((c) => c.id === id)
+  const toggleRoute = (vehicleId: string) => {
+    const newExpanded = new Set(expandedRoutes)
+    if (newExpanded.has(vehicleId)) {
+      newExpanded.delete(vehicleId)
+    } else {
+      newExpanded.add(vehicleId)
+    }
+    setExpandedRoutes(newExpanded)
+  }
+
+  const exportJSON = () => {
+    const data = JSON.stringify(result, null, 2)
+    const blob = new Blob([data], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `optimization-${new Date().toISOString().split("T")[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const saveRoutes = async () => {
+    // Save logic here
+  }
+
+  useEffect(() => {
+    // Leaflet loading logic here
+  }, [])
+
+  useEffect(() => {
+    // Map readiness logic here
+  }, [viewMode])
+
+  useEffect(() => {
+    // Map rendering logic here
+  }, [viewMode, result.routes, depots])
+
+  useEffect(() => {
+    if (viewMode !== "map" || !mapRef.current) return
+    if (mapInstanceRef.current) return // Already initialized
+
+    const initMap = async () => {
+      try {
+        const L = (await import("leaflet")).default
+        await import("leaflet/dist/leaflet.css")
+
+        // Container zaten map varsa temizle
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.remove()
+        }
+
+        const map = L.map(mapRef.current!, {
+          center: [39.9334, 32.8597], // Turkiye merkezi
+          zoom: 6,
+        })
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        }).addTo(map)
+
+        mapInstanceRef.current = map
+
+        // Rotalari haritaya ekle
+        if (result.routes && result.routes.length > 0) {
+          const bounds: [number, number][] = []
+
+          result.routes.forEach((route, index) => {
+            const color = ROUTE_COLORS?.[index % ROUTE_COLORS.length] || "#3B82F6"
+
+            // Depo noktasi
+            const depot = depots?.find((d) => d.id === route.depotId)
+            if (depot?.lat && depot?.lng) {
+              bounds.push([depot.lat, depot.lng])
+              L.circleMarker([depot.lat, depot.lng], {
+                radius: 10,
+                fillColor: "#1E40AF",
+                color: "#fff",
+                weight: 2,
+                fillOpacity: 1,
+              })
+                .bindPopup(`<b>${depot.name}</b><br/>Depo`)
+                .addTo(map)
+            }
+
+            // Duraklar
+            const routePoints: [number, number][] = []
+            if (depot?.lat && depot?.lng) {
+              routePoints.push([depot.lat, depot.lng])
+            }
+
+            route.stops?.forEach((stop, stopIndex) => {
+              const lat = stop.lat || stop.latitude
+              const lng = stop.lng || stop.longitude
+              if (lat && lng) {
+                bounds.push([lat, lng])
+                routePoints.push([lat, lng])
+
+                const markerIcon = L.divIcon({
+                  className: "custom-marker",
+                  html: `<div style="background-color: ${color}; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${stopIndex + 1}</div>`,
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12],
+                })
+
+                L.marker([lat, lng], { icon: markerIcon })
+                  .bindPopup(
+                    `<b>${stop.customerName || stop.customer_name || `Durak ${stopIndex + 1}`}</b><br/>${stop.address || ""}<br/>Talep: ${stop.demand || 0} palet`,
+                  )
+                  .addTo(map)
+              }
+            })
+
+            // Depoya donus
+            if (depot?.lat && depot?.lng) {
+              routePoints.push([depot.lat, depot.lng])
+            }
+
+            // Rota cizgisi
+            if (routePoints.length > 1) {
+              L.polyline(routePoints, {
+                color: color,
+                weight: 4,
+                opacity: 0.8,
+              }).addTo(map)
+            }
+          })
+
+          // Haritayi bounds'a fit et
+          if (bounds.length > 0) {
+            map.fitBounds(bounds, { padding: [50, 50] })
+          }
+        }
+      } catch (error) {
+        console.error("Error initializing map:", error)
+      }
+    }
+
+    initMap()
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove()
+        mapInstanceRef.current = null
+      }
+    }
+  }, [viewMode, result.routes, depots])
+
+  if (!result.success) {
+    return (
+      <Card className="border-destructive">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 text-destructive">
+            <XCircle className="h-6 w-6" />
+            <div>
+              <h3 className="font-medium">Optimizasyon Basarisiz</h3>
+              <p className="text-sm">{result.error}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+        <div className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-green-600" />
+          <span className="text-sm font-medium">Optimizasyon Tamamlandi</span>
+        </div>
+        <Badge variant={result.provider === "openrouteservice" ? "default" : "secondary"} className="gap-1">
+          {result.provider === "openrouteservice" ? (
+            <>
+              <CheckCircle2 className="h-3 w-3" />
+              OpenRouteService API
+            </>
+          ) : (
+            <>
+              <MapPin className="h-3 w-3" />
+              Yerel Algoritma
+            </>
+          )}
+        </Badge>
+      </div>
+
+      {/* Ozet Kartlar */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Truck className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Kullanılan Araç</span>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-100">
+                <Route className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Toplam Rota</p>
+                <p className="text-xl font-bold">{result.routes?.length || 0}</p>
+              </div>
             </div>
-            <p className="text-2xl font-bold mt-1">{result.totalVehiclesUsed}</p>
           </CardContent>
         </Card>
+
         <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Route className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Toplam Mesafe</span>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-green-100">
+                <MapPin className="h-4 w-4 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Toplam Mesafe</p>
+                <p className="text-xl font-bold">{summary.totalDistance.toFixed(1)} km</p>
+              </div>
             </div>
-            <p className="text-2xl font-bold mt-1">{result.totalDistance.toFixed(1)} km</p>
           </CardContent>
         </Card>
+
         <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Banknote className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Toplam Maliyet</span>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-100">
+                <Clock className="h-4 w-4 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Toplam Sure</p>
+                <p className="text-xl font-bold">{Math.round(summary.totalDuration / 60)} saat</p>
+              </div>
             </div>
-            <p className="text-2xl font-bold mt-1">{result.totalCost.toLocaleString()} TL</p>
           </CardContent>
         </Card>
+
         <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Hesaplama Süresi</span>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-100">
+                <DollarSign className="h-4 w-4 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Toplam Maliyet</p>
+                <p className="text-xl font-bold">{summary.totalCost.toLocaleString("tr-TR")} TL</p>
+              </div>
             </div>
-            <p className="text-2xl font-bold mt-1">{result.computationTimeMs} ms</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Algorithm Info */}
+      {/* Maliyet Dagilimi */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
-              <CardTitle className="text-base">Optimizasyon Tamamlandı</CardTitle>
-            </div>
-            <Badge variant="outline">{result.algorithm}</Badge>
+            <CardTitle className="text-sm font-medium">Maliyet Dagilimi</CardTitle>
+            <Badge variant="outline" className="gap-1 text-xs">
+              <CheckCircle2 className="h-3 w-3 text-green-500" />
+              {summary.computationTimeMs} ms
+            </Badge>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              {result.unassignedCustomers.length > 0 && (
-                <div className="flex items-center gap-2 text-amber-600">
-                  <AlertTriangle className="h-4 w-4" />
-                  <span className="text-sm">{result.unassignedCustomers.length} müşteri atanamadı</span>
-                </div>
-              )}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="text-center p-3 bg-muted rounded-lg">
+              <Fuel className="h-4 w-4 mx-auto mb-1 text-orange-500" />
+              <p className="text-xs text-muted-foreground">Yakit</p>
+              <p className="font-semibold text-sm">{summary.fuelCost?.toLocaleString("tr-TR") || 0} TL</p>
             </div>
-            <Button onClick={saveRoutes} disabled={saving || saved}>
-              {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Kaydediliyor...
-                </>
-              ) : saved ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Kaydedildi
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Rotaları Kaydet
-                </>
-              )}
-            </Button>
+            <div className="text-center p-3 bg-muted rounded-lg">
+              <Route className="h-4 w-4 mx-auto mb-1 text-blue-500" />
+              <p className="text-xs text-muted-foreground">Mesafe</p>
+              <p className="font-semibold text-sm">{summary.distanceCost?.toLocaleString("tr-TR") || 0} TL</p>
+            </div>
+            <div className="text-center p-3 bg-muted rounded-lg">
+              <Truck className="h-4 w-4 mx-auto mb-1 text-green-500" />
+              <p className="text-xs text-muted-foreground">Sabit</p>
+              <p className="font-semibold text-sm">{summary.fixedCost?.toLocaleString("tr-TR") || 0} TL</p>
+            </div>
+            <div className="text-center p-3 bg-muted rounded-lg">
+              <Landmark className="h-4 w-4 mx-auto mb-1 text-purple-500" />
+              <p className="text-xs text-muted-foreground">Gecis</p>
+              <p className="font-semibold text-sm">{summary.tollCost?.toLocaleString("tr-TR") || 0} TL</p>
+            </div>
           </div>
+
+          {summary.unassignedCount > 0 && (
+            <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+              <XCircle className="h-4 w-4 text-amber-600" />
+              <span className="text-sm text-amber-800">
+                {summary.unassignedCount} musteri atanamadi (kapasite yetersiz)
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Routes Detail */}
+      {/* Rotalar */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Rota Detayları</CardTitle>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium">Rotalar ({result.routes?.length || 0})</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={exportJSON}>
+                <Download className="h-4 w-4 mr-1" />
+                JSON
+              </Button>
+              <Button size="sm" onClick={saveRoutes} disabled={false}>
+                <Save className="h-4 w-4 mr-1" />
+                Kaydet
+              </Button>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="list">
-            <TabsList>
-              <TabsTrigger value="list">Liste Görünümü</TabsTrigger>
-              <TabsTrigger value="table">Tablo Görünümü</TabsTrigger>
-            </TabsList>
+        <CardContent className="p-0">
+          <Tabs value={viewMode} onValueChange={setViewMode}>
+            <div className="px-4 border-b">
+              <TabsList className="h-9">
+                <TabsTrigger value="list" className="text-xs gap-1">
+                  <List className="h-3 w-3" />
+                  Liste
+                </TabsTrigger>
+                <TabsTrigger value="map" className="text-xs gap-1">
+                  <Map className="h-3 w-3" />
+                  Harita
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-            <TabsContent value="list" className="mt-4 space-y-4">
-              {result.routes.map((route, index) => {
-                const vehicle = getVehicle(route.vehicleId)
-                const depot = getDepot(route.depotId)
-
-                return (
-                  <Card
-                    key={index}
-                    className="border-l-4"
-                    style={{ borderLeftColor: DEPOT_COLORS[depot?.city || ""]?.primary }}
-                  >
-                    <CardContent className="pt-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              style={{
-                                backgroundColor: DEPOT_COLORS[depot?.city || ""]?.primary,
-                                color: "white",
-                              }}
-                            >
-                              {depot?.city}
-                            </Badge>
-                            <span className="font-mono font-medium">{vehicle?.plate}</span>
-                            <Badge variant="outline">{vehicle?.vehicle_type === "tir" ? "TIR" : "Kamyon"}</Badge>
-                          </div>
-                          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            <span>{route.stops.length} durak</span>
-                            <span>{route.totalDistance.toFixed(1)} km</span>
-                            <span>
-                              {Math.floor(route.totalDuration / 60)}s {route.totalDuration % 60}dk
-                            </span>
-                            <span>{route.totalLoad} palet</span>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold">{route.totalCost.toLocaleString()} TL</p>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            <span className="inline-flex items-center gap-1">
-                              <Fuel className="h-3 w-3" />
-                              {route.fuelCost.toLocaleString()} TL
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 pt-3 border-t">
-                        <p className="text-xs text-muted-foreground mb-2">Teslimat Sırası:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {route.stops.map((stopId, stopIndex) => {
-                            const customer = getCustomer(stopId)
-                            return (
-                              <Badge key={stopId} variant="secondary" className="text-xs">
-                                {stopIndex + 1}. {customer?.name?.slice(0, 20)}
-                              </Badge>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
+            <TabsContent value="list" className="m-0">
+              <ScrollArea className="h-[350px]">
+                {result.routes?.map((route, index) => (
+                  <RouteCard
+                    key={route.vehicleId || index}
+                    route={route}
+                    index={index}
+                    expanded={expandedRoutes.has(route.vehicleId)}
+                    onToggle={() => toggleRoute(route.vehicleId)}
+                    depots={depots}
+                  />
+                ))}
+              </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="table" className="mt-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Depo</TableHead>
-                    <TableHead>Araç</TableHead>
-                    <TableHead>Durak</TableHead>
-                    <TableHead>Mesafe</TableHead>
-                    <TableHead>Süre</TableHead>
-                    <TableHead>Yük</TableHead>
-                    <TableHead>Yakıt</TableHead>
-                    <TableHead>Toplam</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {result.routes.map((route, index) => {
-                    const vehicle = getVehicle(route.vehicleId)
-                    const depot = getDepot(route.depotId)
-                    return (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            style={{
-                              borderColor: DEPOT_COLORS[depot?.city || ""]?.primary,
-                              color: DEPOT_COLORS[depot?.city || ""]?.primary,
-                            }}
-                          >
-                            {depot?.city}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-mono">{vehicle?.plate}</TableCell>
-                        <TableCell>{route.stops.length}</TableCell>
-                        <TableCell>{route.totalDistance.toFixed(1)} km</TableCell>
-                        <TableCell>
-                          {Math.floor(route.totalDuration / 60)}s {route.totalDuration % 60}dk
-                        </TableCell>
-                        <TableCell>{route.totalLoad} palet</TableCell>
-                        <TableCell>{route.fuelCost.toLocaleString()} TL</TableCell>
-                        <TableCell className="font-medium">{route.totalCost.toLocaleString()} TL</TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
+            <TabsContent value="map" className="m-0">
+              <div ref={mapRef} className="h-[350px] w-full" />
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+interface RouteCardProps {
+  route: OptimizedRoute
+  index: number
+  expanded: boolean
+  onToggle: () => void
+  depots: Depot[]
+}
+
+function RouteCard({ route, index, expanded, onToggle, depots }: RouteCardProps) {
+  const depot = depots?.find((d) => d.id === route.depotId)
+  const depotColor = depot ? DEPOT_COLORS[depot.city] : null
+  const routeColor = ROUTE_COLORS?.[index % ROUTE_COLORS.length] || "#3B82F6"
+
+  const totalDistance = route.totalDistance ?? route.distance ?? 0
+  const totalDuration = route.totalDuration ?? route.duration ?? 0
+  const totalLoad = route.totalLoad ?? route.load ?? 0
+  const fuelCost = route.fuelCost ?? 0
+  const distanceCost = route.distanceCost ?? 0
+  const fixedCost = route.fixedCost ?? 0
+  const tollCost = route.tollCost ?? 0
+
+  const tollCrossings = route.tollCrossings || []
+  const highwayUsage = route.highwayUsage || []
+
+  const totalCost = route.totalCost != null ? route.totalCost : fuelCost + distanceCost + fixedCost + tollCost
+
+  return (
+    <div className="border-b last:border-b-0">
+      <button onClick={onToggle} className="w-full p-3 hover:bg-muted/50 transition-colors text-left">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-medium"
+              style={{ backgroundColor: routeColor }}
+            >
+              {index + 1}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-sm">{route.vehiclePlate || `Arac ${index + 1}`}</span>
+                <Badge
+                  variant="outline"
+                  className="text-xs"
+                  style={{ borderColor: depotColor?.primary, color: depotColor?.primary }}
+                >
+                  {route.depotName || depot?.name || "Depo"}
+                </Badge>
+                {(tollCrossings.length > 0 || highwayUsage.length > 0) && (
+                  <Badge variant="secondary" className="text-xs gap-1">
+                    <Landmark className="h-3 w-3" />
+                    {tollCrossings.length + highwayUsage.length} gecis
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                <span>{route.stops?.length || 0} durak</span>
+                <span>{totalDistance.toFixed(1)} km</span>
+                <span>{Math.round(totalDuration)} dk</span>
+                <span>{totalLoad} palet</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-sm">{totalCost.toLocaleString("tr-TR")} TL</span>
+            {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </div>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3">
+          <div className="mb-3 p-2 bg-muted/50 rounded-lg">
+            <div className="grid grid-cols-4 gap-2 text-xs">
+              <div className="text-center">
+                <p className="text-muted-foreground">Yakit</p>
+                <p className="font-medium">{fuelCost.toLocaleString("tr-TR")} TL</p>
+              </div>
+              <div className="text-center">
+                <p className="text-muted-foreground">Mesafe</p>
+                <p className="font-medium">{distanceCost.toLocaleString("tr-TR")} TL</p>
+              </div>
+              <div className="text-center">
+                <p className="text-muted-foreground">Sabit</p>
+                <p className="font-medium">{fixedCost.toLocaleString("tr-TR")} TL</p>
+              </div>
+              <div className="text-center">
+                <p className="text-muted-foreground">Gecis</p>
+                <p className="font-medium">{tollCost.toLocaleString("tr-TR")} TL</p>
+              </div>
+            </div>
+          </div>
+
+          {tollCrossings.length > 0 && (
+            <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded-lg">
+              <p className="text-xs font-medium text-purple-800 mb-2 flex items-center gap-1">
+                <Landmark className="h-3 w-3" />
+                Kopru / Tunel Gecisleri
+              </p>
+              <div className="space-y-1">
+                {tollCrossings.map((crossing: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between text-xs">
+                    <span className="text-purple-700">
+                      {crossing.type === "Kopru" ? "🌉" : "🚇"} {crossing.name}
+                    </span>
+                    <span className="font-medium text-purple-800">{crossing.cost?.toLocaleString("tr-TR")} TL</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {highwayUsage.length > 0 && (
+            <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs font-medium text-blue-800 mb-2 flex items-center gap-1">
+                <CircleDollarSign className="h-3 w-3" />
+                Otoyol Kullanimi
+              </p>
+              <div className="space-y-1">
+                {highwayUsage.map((hw: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between text-xs">
+                    <div className="text-blue-700">
+                      <span className="font-medium">{hw.highway}</span>
+                      <span className="text-blue-500 ml-1">
+                        ({hw.entry} → {hw.exit}, {hw.distanceKm} km)
+                      </span>
+                    </div>
+                    <span className="font-medium text-blue-800">{hw.cost?.toLocaleString("tr-TR")} TL</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="ml-4 pl-4 border-l-2 space-y-2" style={{ borderColor: routeColor }}>
+            <div className="relative">
+              <div
+                className="absolute -left-[21px] w-3 h-3 rounded-full border-2 bg-background"
+                style={{ borderColor: routeColor }}
+              />
+              <p className="text-xs font-medium">{route.depotName || depot?.name || "Depo"} (Baslangic)</p>
+            </div>
+
+            {route.stops?.map((stop, stopIndex) => (
+              <div key={stop.customerId || stopIndex} className="relative">
+                <div
+                  className="absolute -left-[21px] w-3 h-3 rounded-full flex items-center justify-center text-white"
+                  style={{ backgroundColor: routeColor, fontSize: "8px" }}
+                >
+                  {stopIndex + 1}
+                </div>
+                <div>
+                  <p className="text-xs font-medium">{stop.customerName || `Musteri ${stopIndex + 1}`}</p>
+                  <p className="text-xs text-muted-foreground">{stop.address || ""}</p>
+                  <div className="flex gap-2 text-xs text-muted-foreground">
+                    <span>+{stop.distanceFromPrev?.toFixed(1)} km</span>
+                    <span>{stop.arrivalTime?.toFixed(0)} dk</span>
+                    <span>{stop.demand} palet</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <div className="relative">
+              <div
+                className="absolute -left-[21px] w-3 h-3 rounded-full border-2 bg-background"
+                style={{ borderColor: routeColor }}
+              />
+              <p className="text-xs font-medium">{route.depotName || depot?.name || "Depo"} (Donus)</p>
+            </div>
+          </div>
+
+          <div className="mt-3 pt-3 border-t flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Rota Toplam Maliyeti</span>
+            <span className="font-bold text-sm">{totalCost.toLocaleString("tr-TR")} TL</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

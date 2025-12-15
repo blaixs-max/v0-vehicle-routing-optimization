@@ -1,34 +1,41 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { mockDepots, mockVehicles, mockCustomers } from "@/lib/mock-data"
-import type { Depot, Vehicle, Customer } from "@/lib/types"
-import type { VroomOptimizationResult } from "@/lib/vroom/types"
-import { optimizeWithVroom } from "@/lib/vroom/optimizer"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Slider } from "@/components/ui/slider"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Separator } from "@/components/ui/separator"
 import {
-  Zap,
-  Clock,
   Route,
-  TrendingDown,
+  Truck,
+  MapPin,
+  Clock,
   Fuel,
-  AlertCircle,
-  Loader2,
-  Cpu,
-  Webhook,
-  CheckCircle2,
-  Copy,
+  AlertTriangle,
+  CheckCircle,
+  Settings,
+  Play,
+  RefreshCw,
+  Package,
+  Building,
+  Zap,
+  Target,
+  Info,
 } from "lucide-react"
-import { DEPOT_COLORS } from "@/lib/constants"
-import { VroomResults } from "./vroom-results"
+import type { Depot, Vehicle, Customer, OptimizationResult } from "@/lib/types"
+import { mockDepots, mockVehicles, mockCustomers } from "@/lib/mock-data"
+import { createClient } from "@/lib/supabase/client"
+import { OptimizationResults } from "./optimization-results"
+import { saveOptimizedRoutes } from "@/lib/route-store"
+import { saveCustomerCoordinates, getCustomerCoordinates } from "@/lib/customer-store"
+import { MissingCoordinatesDialog } from "@/components/customers/missing-coordinates-dialog"
+import type { MockRoute } from "@/lib/mock-data"
 
 export function OptimizationPanel() {
   const [depots, setDepots] = useState<Depot[]>([])
@@ -36,18 +43,20 @@ export function OptimizationPanel() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [optimizing, setOptimizing] = useState(false)
-  const [result, setResult] = useState<VroomOptimizationResult | null>(null)
+  const [result, setResult] = useState<OptimizationResult | null>(null)
   const [progress, setProgress] = useState(0)
-  const [copied, setCopied] = useState(false)
   const [isDemo, setIsDemo] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const [fuelPrice, setFuelPrice] = useState("47.50")
-  const [maxDistance, setMaxDistance] = useState("")
-  const [maxTime, setMaxTime] = useState("")
-  const [includeGeometry, setIncludeGeometry] = useState(true)
-  const [selectedDepot, setSelectedDepot] = useState<string>("")
+  const [missingCoordinatesCustomers, setMissingCoordinatesCustomers] = useState<Customer[]>([])
+  const [showMissingCoordinatesDialog, setShowMissingCoordinatesDialog] = useState(false)
 
-  const webhookUrl = typeof window !== "undefined" ? `${window.location.origin}/api/n8n/optimize` : "/api/n8n/optimize"
+  // Parametreler
+  const [selectedDepots, setSelectedDepots] = useState<string[]>([])
+  const [fuelPrice, setFuelPrice] = useState(47.5)
+  const [maxRouteDistance, setMaxRouteDistance] = useState<number | null>(null)
+  const [maxRouteDuration, setMaxRouteDuration] = useState(600)
+  const [useRealDistances, setUseRealDistances] = useState(true)
 
   useEffect(() => {
     fetchData()
@@ -57,115 +66,236 @@ export function OptimizationPanel() {
     const supabase = createClient()
 
     if (!supabase) {
+      const savedCoords = getCustomerCoordinates()
+      const customersWithCoords = mockCustomers.map((c) => {
+        const saved = savedCoords[c.id]
+        if (saved) {
+          return { ...c, lat: saved.lat, lng: saved.lng }
+        }
+        return c
+      })
+
       setDepots(mockDepots)
       setVehicles(mockVehicles)
-      setCustomers(mockCustomers)
+      setCustomers(customersWithCoords)
+      setSelectedDepots(mockDepots.map((d) => d.id))
       setIsDemo(true)
       setLoading(false)
       return
     }
 
-    try {
-      const [depotsRes, vehiclesRes, customersRes, fuelRes] = await Promise.all([
-        supabase.from("depots").select("*").eq("status", "active"),
-        supabase.from("vehicles").select("*").eq("status", "available"),
-        supabase.from("customers").select("*").eq("status", "pending"),
-        supabase.from("fuel_prices").select("*").order("effective_date", { ascending: false }).limit(1),
-      ])
+    const [depotsRes, vehiclesRes, customersRes] = await Promise.all([
+      supabase.from("depots").select("*"),
+      supabase.from("vehicles").select("*"),
+      supabase.from("customers").select("*"),
+    ])
 
-      if (depotsRes.data) setDepots(depotsRes.data)
-      if (vehiclesRes.data) setVehicles(vehiclesRes.data)
-      if (customersRes.data) setCustomers(customersRes.data)
-      if (fuelRes.data?.[0]) setFuelPrice(fuelRes.data[0].price_per_liter.toString())
-    } catch (error) {
+    if (depotsRes.data) setDepots(depotsRes.data)
+    else {
       setDepots(mockDepots)
-      setVehicles(mockVehicles)
-      setCustomers(mockCustomers)
       setIsDemo(true)
+    }
+
+    if (vehiclesRes.data) setVehicles(vehiclesRes.data)
+    else setVehicles(mockVehicles)
+
+    if (customersRes.data) setCustomers(customersRes.data)
+    else {
+      const savedCoords = getCustomerCoordinates()
+      const customersWithCoords = mockCustomers.map((c) => {
+        const saved = savedCoords[c.id]
+        if (saved) {
+          return { ...c, lat: saved.lat, lng: saved.lng }
+        }
+        return c
+      })
+      setCustomers(customersWithCoords)
+    }
+
+    if (depotsRes.data) {
+      setSelectedDepots(depotsRes.data.map((d: Depot) => d.id))
+    } else {
+      setSelectedDepots(mockDepots.map((d) => d.id))
     }
 
     setLoading(false)
   }
 
-  async function runOptimization() {
+  async function handleSaveCoordinates(updates: { id: string; lat: number; lng: number }[]) {
+    const supabase = createClient()
+
+    // Save to localStorage for persistence
+    saveCustomerCoordinates(updates)
+
+    if (!supabase || isDemo) {
+      // Demo modunda local state'i guncelle
+      setCustomers((prev) =>
+        prev.map((c) => {
+          const update = updates.find((u) => u.id === c.id)
+          if (update) {
+            return { ...c, lat: update.lat, lng: update.lng }
+          }
+          return c
+        }),
+      )
+      return
+    }
+
+    // Supabase'de guncelle
+    for (const update of updates) {
+      await supabase.from("customers").update({ lat: update.lat, lng: update.lng }).eq("id", update.id)
+    }
+
+    // Verileri yeniden yukle
+    fetchData()
+  }
+
+  function checkMissingCoordinates(): Customer[] {
+    return customers.filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
+  }
+
+  async function handleOptimize() {
+    // Koordinat kontrolu
+    const missingCoords = checkMissingCoordinates()
+    if (missingCoords.length > 0) {
+      setMissingCoordinatesCustomers(missingCoords)
+      setShowMissingCoordinatesDialog(true)
+      return
+    }
+
     setOptimizing(true)
-    setProgress(10)
-    setResult(null)
+    setProgress(0)
+    setError(null)
+
+    const selectedDepotsList = depots.filter((d) => selectedDepots.includes(d.id))
+    const availableVehicles = vehicles.filter((v) => v.status === "available")
+
+    // Progress simulasyonu
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 10, 90))
+    }, 500)
 
     try {
-      setProgress(30)
-
-      const optimizationResult = await optimizeWithVroom(depots, vehicles, customers, {
-        depotId: selectedDepot || undefined,
-        fuelPricePerLiter: Number.parseFloat(fuelPrice),
-        maxRouteDistanceKm: maxDistance ? Number.parseFloat(maxDistance) : undefined,
-        maxRouteTimeMin: maxTime ? Number.parseFloat(maxTime) : undefined,
-        includeGeometry,
+      const response = await fetch("/api/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          depots: selectedDepotsList,
+          vehicles: availableVehicles,
+          customers,
+          options: {
+            fuelPrice,
+            maxRouteDistance,
+            maxRouteDuration,
+            useRealDistances,
+          },
+        }),
       })
 
-      setProgress(90)
-      setResult(optimizationResult)
+      clearInterval(progressInterval)
 
-      if (optimizationResult.success && !isDemo) {
-        const supabase = createClient()
-        if (supabase) {
-          await supabase.from("optimization_history").insert({
-            algorithm: "VROOM",
-            depot_id: selectedDepot || null,
-            parameters: {
-              fuelPrice: Number.parseFloat(fuelPrice),
-              maxDistance: maxDistance || null,
-              maxTime: maxTime || null,
-              includeGeometry,
-            },
-            total_routes: optimizationResult.summary.totalRoutes,
-            total_vehicles_used: optimizationResult.summary.totalRoutes,
-            total_distance_km: optimizationResult.summary.totalDistance,
-            total_cost: optimizationResult.summary.totalCost,
-            computation_time_ms: optimizationResult.summary.computationTimeMs,
-          })
-        }
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Optimizasyon basarisiz")
       }
 
+      const data = await response.json()
+      setResult(data)
       setProgress(100)
-    } catch (error) {
-      setResult({
-        success: false,
-        error: error instanceof Error ? error.message : "Bilinmeyen hata",
-        summary: {
-          totalRoutes: 0,
-          totalDistance: 0,
-          totalDuration: 0,
-          totalCost: 0,
-          fuelCost: 0,
-          fixedCost: 0,
-          distanceCost: 0,
-          unassignedCount: customers.length,
-          computationTimeMs: 0,
-        },
-        routes: [],
-        unassigned: [],
+
+      // Save optimized routes to localStorage for Map page
+      const mockRoutes: MockRoute[] = data.routes.map((route: any, index: number) => {
+        const depot = selectedDepotsList.find((d) => d.id === route.depotId)
+        const vehicle = availableVehicles.find((v) => v.id === route.vehicleId)
+
+        const totalDistanceValue =
+          typeof route.totalDistance !== "undefined"
+            ? route.totalDistance
+            : typeof route.distance !== "undefined"
+              ? route.distance
+              : 0
+
+        const totalDurationValue =
+          typeof route.totalDuration !== "undefined"
+            ? route.totalDuration
+            : typeof route.duration !== "undefined"
+              ? route.duration
+              : 0
+
+        const fuelCostValue = route.fuelCost ?? 0
+        const distanceCostValue = route.distanceCost ?? 0
+        const fixedCostValue = route.fixedCost ?? 0
+        const tollCostValue = route.tollCost ?? 0
+        const totalCostValue = route.totalCost ?? fuelCostValue + distanceCostValue + fixedCostValue + tollCostValue
+
+        return {
+          id: `route-${index + 1}`,
+          vehicle_id: route.vehicleId,
+          vehicle_plate: vehicle?.plate || `Arac ${index + 1}`,
+          depot_id: route.depotId,
+          depot_name: depot?.name || depot?.city || "Depo",
+          status: "pending" as const,
+          total_distance_km: totalDistanceValue,
+          total_duration_min: totalDurationValue,
+          total_cost: totalCostValue,
+          fuel_cost: fuelCostValue,
+          distance_cost: distanceCostValue,
+          fixed_cost: fixedCostValue,
+          toll_cost: tollCostValue,
+          stops: route.stops.map((stop: any, stopIndex: number) => {
+            const customer = customers.find((c) => c.id === stop.customerId)
+            return {
+              customer_id: stop.customerId,
+              customer_name: customer?.name || stop.customerName || `Musteri ${stopIndex + 1}`,
+              order: stopIndex + 1,
+              sequence: stopIndex + 1,
+              arrival_time: stop.arrivalTime || `${8 + stopIndex}:00`,
+              service_time: stop.serviceTime || 15,
+              demand: stop.demand || customer?.demand_pallet || 0,
+              lat: stop.lat || customer?.lat || 0,
+              lng: stop.lng || customer?.lng || 0,
+              address: stop.address || customer?.address || "",
+            }
+          }),
+          geometry: route.geometry || null,
+        }
       })
+
+      const summaryData = {
+        totalRoutes: mockRoutes.length,
+        totalDistance:
+          data.summary?.totalDistance || mockRoutes.reduce((sum, r) => sum + (r.total_distance_km || 0), 0),
+        totalDuration:
+          data.summary?.totalDuration || mockRoutes.reduce((sum, r) => sum + (r.total_duration_min || 0), 0),
+        totalCost: data.summary?.totalCost || mockRoutes.reduce((sum, r) => sum + (r.total_cost || 0), 0),
+        fuelCost: data.summary?.fuelCost || mockRoutes.reduce((sum, r) => sum + (r.fuel_cost || 0), 0),
+        distanceCost: data.summary?.distanceCost || mockRoutes.reduce((sum, r) => sum + (r.distance_cost || 0), 0),
+        fixedCost: data.summary?.fixedCost || mockRoutes.reduce((sum, r) => sum + (r.fixed_cost || 0), 0),
+        tollCost: data.summary?.tollCost || mockRoutes.reduce((sum, r) => sum + (r.toll_cost || 0), 0),
+      }
+
+      saveOptimizedRoutes(mockRoutes, summaryData, data.provider || "openrouteservice")
+    } catch (err) {
+      clearInterval(progressInterval)
+      setError(err instanceof Error ? err.message : "Bilinmeyen hata")
     } finally {
       setOptimizing(false)
     }
   }
 
-  async function copyWebhookUrl() {
-    await navigator.clipboard.writeText(webhookUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
+  const activeDepots = depots.filter((d) => selectedDepots.includes(d.id))
+  const availableVehicles = vehicles.filter((v) => v.status === "available")
   const totalDemand = customers.reduce((sum, c) => sum + (c.demand_pallet || c.demand_pallets || 0), 0)
-  const totalCapacity = vehicles.reduce((sum, v) => sum + (v.capacity_pallet || 0), 0)
-  const capacityRatio = totalCapacity > 0 ? (totalDemand / totalCapacity) * 100 : 0
+  const totalCapacity = availableVehicles.reduce((sum, v) => sum + v.capacity_pallet, 0)
+  const missingCoords = checkMissingCoordinates()
 
   if (loading) {
     return (
-      <Card className="p-8 text-center">
-        <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-        <p className="text-muted-foreground">Veriler yukleniyor...</p>
+      <Card>
+        <CardContent className="p-8 text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto text-primary" />
+          <p className="mt-2 text-muted-foreground">Veriler yukleniyor...</p>
+        </CardContent>
       </Card>
     )
   }
@@ -173,311 +303,264 @@ export function OptimizationPanel() {
   return (
     <div className="space-y-6">
       {isDemo && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-center gap-2">
-          <AlertCircle className="h-4 w-4" />
-          <span className="text-sm">Demo modu aktif - Supabase baglantisi yapilandirilmamis</span>
-        </div>
+        <Alert className="border-blue-500/50 bg-blue-500/10">
+          <Info className="h-4 w-4 text-blue-500" />
+          <AlertDescription className="text-blue-600 dark:text-blue-400">
+            Demo modu aktif - Gercek veriler icin Supabase baglantisi yapin. Parametreleri ayarlayin ve "Rotalari
+            Optimize Et" butonuna tiklayin
+          </AlertDescription>
+        </Alert>
       )}
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Cpu className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">Rota Optimizasyonu</h1>
-            <p className="text-sm text-muted-foreground">VROOM Engine + OSRM</p>
+      {/* Missing coordinates warning */}
+      {missingCoords.length > 0 && (
+        <Alert className="border-amber-500/50 bg-amber-500/10">
+          <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <AlertDescription className="text-amber-600 dark:text-amber-400 flex items-center justify-between">
+            <span>
+              <strong>{missingCoords.length} musteri</strong> icin koordinat bilgisi eksik. Optimizasyon oncesi
+              koordinat girmeniz gerekiyor.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-4 border-amber-500 text-amber-600 hover:bg-amber-50 bg-transparent"
+              onClick={() => {
+                setMissingCoordinatesCustomers(missingCoords)
+                setShowMissingCoordinatesDialog(true)
+              }}
+            >
+              <MapPin className="h-4 w-4 mr-2" />
+              Koordinatlari Gir
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Left Panel - Parameters */}
+        <div className="lg:col-span-1 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Settings className="h-5 w-5" />
+                Optimizasyon Ayarlari
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Depot Selection */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Depo Secimi</Label>
+                <Select
+                  value={selectedDepots.length === depots.length ? "all" : selectedDepots[0]}
+                  onValueChange={(v) => {
+                    if (v === "all") setSelectedDepots(depots.map((d) => d.id))
+                    else setSelectedDepots([v])
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Depo sec" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tum Depolar</SelectItem>
+                    {depots.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name || d.city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
+              {/* Fuel Price */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Yakit Fiyati (TL/L)</Label>
+                <div className="flex items-center gap-2">
+                  <Fuel className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="number"
+                    value={fuelPrice}
+                    onChange={(e) => setFuelPrice(Number(e.target.value))}
+                    step="0.1"
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              {/* Max Route Distance */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Maks. Rota Mesafesi (km)</Label>
+                <div className="flex items-center gap-2">
+                  <Route className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    value={maxRouteDistance || "Sinirsiz"}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setMaxRouteDistance(val === "" || val === "Sinirsiz" ? null : Number(val))
+                    }}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              {/* Max Route Duration */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Maks. Rota Suresi (dk): {maxRouteDuration}</Label>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <Slider
+                    value={[maxRouteDuration]}
+                    onValueChange={([v]) => setMaxRouteDuration(v)}
+                    min={60}
+                    max={720}
+                    step={30}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Geometry Option */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Rota Geometrisi</Label>
+                <p className="text-xs text-muted-foreground">Harita cizimi icin</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">Gercek yol geometrisi</span>
+                  <Switch checked={useRealDistances} onCheckedChange={setUseRealDistances} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Summary Stats */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Target className="h-5 w-5" />
+                Optimizasyon Ozeti
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Building className="h-4 w-4" /> Depolar
+                </span>
+                <div className="flex gap-1">
+                  {activeDepots.map((d) => (
+                    <Badge key={d.id} variant="secondary" className="text-xs">
+                      {d.city}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Truck className="h-4 w-4" /> Musait Araclar
+                </span>
+                <Badge variant="outline">{availableVehicles.length} arac</Badge>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <MapPin className="h-4 w-4" /> Bekleyen Teslimat
+                </span>
+                <Badge variant="outline">
+                  {customers.length} teslimat
+                  {missingCoords.length > 0 && (
+                    <span className="ml-1 text-amber-500">({missingCoords.length} koordinatsiz)</span>
+                  )}
+                </Badge>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Package className="h-4 w-4" /> Toplam Talep
+                </span>
+                <Badge variant="outline">{totalDemand} palet</Badge>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Kapasite Durumu</span>
+                <Badge variant={totalCapacity >= totalDemand ? "default" : "destructive"}>
+                  {totalCapacity >= totalDemand ? (
+                    <>
+                      <CheckCircle className="h-3 w-3 mr-1" /> Yeterli
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-3 w-3 mr-1" /> Yetersiz
+                    </>
+                  )}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Optimize Button */}
+          <Button
+            className="w-full h-12 text-lg"
+            onClick={handleOptimize}
+            disabled={optimizing || availableVehicles.length === 0}
+          >
+            {optimizing ? (
+              <>
+                <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
+                Optimize Ediliyor... %{progress}
+              </>
+            ) : (
+              <>
+                <Play className="h-5 w-5 mr-2" />
+                Rotalari Optimize Et
+              </>
+            )}
+          </Button>
+
+          {/* VROOM Status */}
+          <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            <Zap className="h-3 w-3 text-green-500" />
+            <span>VROOM Hazir</span>
           </div>
         </div>
-        <Badge variant="outline" className="gap-1">
-          <CheckCircle2 className="h-3 w-3 text-green-500" />
-          VROOM API Aktif
-        </Badge>
+
+        {/* Right Panel - Results */}
+        <div className="lg:col-span-2">
+          {error ? (
+            <Alert className="border-red-500/50 bg-red-500/10">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <AlertDescription className="text-red-600 dark:text-red-400">{error}</AlertDescription>
+            </Alert>
+          ) : result ? (
+            <OptimizationResults result={result} depots={depots} />
+          ) : (
+            <Card className="h-full flex items-center justify-center min-h-[400px]">
+              <div className="text-center p-8">
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                  <Route className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Henuz optimizasyon yapilmadi</h3>
+                <p className="text-muted-foreground max-w-sm">
+                  Sol panelden parametreleri ayarlayin ve "Rotalari Optimize Et" butonuna tiklayin
+                </p>
+              </div>
+            </Card>
+          )}
+        </div>
       </div>
 
-      <Tabs defaultValue="optimize" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="optimize" className="gap-2">
-            <Zap className="h-4 w-4" />
-            Optimizasyon
-          </TabsTrigger>
-          <TabsTrigger value="n8n" className="gap-2">
-            <Webhook className="h-4 w-4" />
-            N8N Entegrasyonu
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="optimize">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Optimizasyon Ozeti</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Aktif Depolar</span>
-                    <div className="flex gap-1">
-                      {depots.map((d) => (
-                        <Badge
-                          key={d.id}
-                          variant="outline"
-                          style={{
-                            borderColor: DEPOT_COLORS[d.city]?.primary,
-                            color: DEPOT_COLORS[d.city]?.primary,
-                          }}
-                        >
-                          {d.city}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Musait Araclar</span>
-                    <span className="font-medium">{vehicles.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Bekleyen Teslimat</span>
-                    <span className="font-medium">{customers.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Toplam Talep</span>
-                    <span className="font-medium">{totalDemand} palet</span>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Kapasite Kullanimi</span>
-                      <span className="font-medium">{capacityRatio.toFixed(1)}%</span>
-                    </div>
-                    <Progress value={Math.min(capacityRatio, 100)} className="h-2" />
-                  </div>
-
-                  {capacityRatio > 100 && (
-                    <div className="flex items-center gap-2 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      Talep, mevcut kapasiteyi asiyor!
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Parametreler</CardTitle>
-                  <CardDescription>VROOM optimizasyon ayarlari</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Depo Filtresi</Label>
-                    <select
-                      className="w-full h-10 px-3 rounded-md border bg-background"
-                      value={selectedDepot}
-                      onChange={(e) => setSelectedDepot(e.target.value)}
-                    >
-                      <option value="">Tum Depolar</option>
-                      {depots.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.city})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="fuelPrice">Yakit Fiyati (TL/L)</Label>
-                    <div className="relative">
-                      <Fuel className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="fuelPrice"
-                        type="number"
-                        step="0.01"
-                        value={fuelPrice}
-                        onChange={(e) => setFuelPrice(e.target.value)}
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="maxDistance">Maks. Rota Mesafesi (km)</Label>
-                    <div className="relative">
-                      <Route className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="maxDistance"
-                        type="number"
-                        value={maxDistance}
-                        onChange={(e) => setMaxDistance(e.target.value)}
-                        placeholder="Sinirsiz"
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="maxTime">Maks. Rota Suresi (dk)</Label>
-                    <div className="relative">
-                      <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="maxTime"
-                        type="number"
-                        value={maxTime}
-                        onChange={(e) => setMaxTime(e.target.value)}
-                        placeholder="Sinirsiz"
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2">
-                    <div className="space-y-0.5">
-                      <Label>Rota Geometrisi</Label>
-                      <p className="text-xs text-muted-foreground">Harita cizimi icin</p>
-                    </div>
-                    <Switch checked={includeGeometry} onCheckedChange={setIncludeGeometry} />
-                  </div>
-
-                  <Button
-                    onClick={runOptimization}
-                    disabled={optimizing || customers.length === 0}
-                    className="w-full mt-4"
-                  >
-                    {optimizing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        VROOM Calisiyor...
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="h-4 w-4 mr-2" />
-                        Optimizasyonu Baslat
-                      </>
-                    )}
-                  </Button>
-
-                  {optimizing && <Progress value={progress} className="h-2" />}
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="lg:col-span-2">
-              {result ? (
-                <VroomResults result={result} depots={depots} />
-              ) : (
-                <Card className="h-full flex items-center justify-center min-h-[400px]">
-                  <div className="text-center space-y-4">
-                    <div className="p-4 rounded-full bg-muted inline-block">
-                      <TrendingDown className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium">Henuz optimizasyon yapilmadi</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Parametreleri ayarlayin ve VROOM ile optimizasyonu baslatin
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="n8n">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Webhook className="h-5 w-5" />
-                  N8N Webhook Endpoints
-                </CardTitle>
-                <CardDescription>Bu endpointleri N8N workflowlarinizda kullanabilirsiniz</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Optimizasyon Endpoint</Label>
-                  <div className="flex gap-2">
-                    <code className="flex-1 px-3 py-2 bg-muted rounded-md text-sm font-mono overflow-x-auto">
-                      POST {webhookUrl}
-                    </code>
-                    <Button variant="outline" size="icon" onClick={copyWebhookUrl}>
-                      {copied ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Analiz Endpoint</Label>
-                  <code className="block px-3 py-2 bg-muted rounded-md text-sm font-mono">POST /api/n8n/analyze</code>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Yeniden Optimizasyon</Label>
-                  <code className="block px-3 py-2 bg-muted rounded-md text-sm font-mono">
-                    POST /api/n8n/reoptimize
-                  </code>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Ornek Request Body</CardTitle>
-                <CardDescription>N8N HTTP Request node icin</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <pre className="p-4 bg-muted rounded-lg text-sm font-mono overflow-x-auto">
-                  {`{
-  "fuelPricePerLiter": 47.5,
-  "maxRouteDistanceKm": 300,
-  "maxRouteTimeMin": 480,
-  "includeGeometry": true,
-  "saveRoutes": true
-}`}
-                </pre>
-              </CardContent>
-            </Card>
-
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>N8N + AI Workflow Ornegi</CardTitle>
-                <CardDescription>Yapay zeka destekli otomatik rota optimizasyonu</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4 overflow-x-auto pb-4">
-                  <div className="flex-shrink-0 p-4 bg-orange-100 rounded-lg text-center min-w-[120px]">
-                    <div className="text-2xl mb-1">⏰</div>
-                    <div className="text-sm font-medium">Schedule</div>
-                    <div className="text-xs text-muted-foreground">Her gun 06:00</div>
-                  </div>
-                  <div className="text-muted-foreground">→</div>
-                  <div className="flex-shrink-0 p-4 bg-blue-100 rounded-lg text-center min-w-[120px]">
-                    <div className="text-2xl mb-1">📊</div>
-                    <div className="text-sm font-medium">HTTP Request</div>
-                    <div className="text-xs text-muted-foreground">/api/n8n/analyze</div>
-                  </div>
-                  <div className="text-muted-foreground">→</div>
-                  <div className="flex-shrink-0 p-4 bg-green-100 rounded-lg text-center min-w-[120px]">
-                    <div className="text-2xl mb-1">🤖</div>
-                    <div className="text-sm font-medium">OpenAI</div>
-                    <div className="text-xs text-muted-foreground">Parametre oner</div>
-                  </div>
-                  <div className="text-muted-foreground">→</div>
-                  <div className="flex-shrink-0 p-4 bg-purple-100 rounded-lg text-center min-w-[120px]">
-                    <div className="text-2xl mb-1">🚛</div>
-                    <div className="text-sm font-medium">HTTP Request</div>
-                    <div className="text-xs text-muted-foreground">/api/n8n/optimize</div>
-                  </div>
-                  <div className="text-muted-foreground">→</div>
-                  <div className="flex-shrink-0 p-4 bg-pink-100 rounded-lg text-center min-w-[120px]">
-                    <div className="text-2xl mb-1">📧</div>
-                    <div className="text-sm font-medium">Email/Slack</div>
-                    <div className="text-xs text-muted-foreground">Rapor gonder</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+      {/* Missing Coordinates Dialog */}
+      <MissingCoordinatesDialog
+        open={showMissingCoordinatesDialog}
+        onOpenChange={setShowMissingCoordinatesDialog}
+        customers={missingCoordinatesCustomers}
+        onSave={handleSaveCoordinates}
+      />
     </div>
   )
 }
