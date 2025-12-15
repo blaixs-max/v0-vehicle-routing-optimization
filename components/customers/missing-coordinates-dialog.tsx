@@ -50,6 +50,9 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
   const [coordinates, setCoordinates] = useState<Record<string, { lat: string; lng: string }>>({})
   const [saving, setSaving] = useState(false)
   const [urlInput, setUrlInput] = useState("")
+  const [addressSearch, setAddressSearch] = useState("")
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searching, setSearching] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
@@ -58,7 +61,6 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
   const currentCustomer = customers[currentIndex]
   const savedCount = Object.keys(coordinates).filter((id) => coordinates[id]?.lat && coordinates[id]?.lng).length
 
-  // Initialize coordinates for current customer
   useEffect(() => {
     if (!open || !currentCustomer) return
     if (!coordinates[currentCustomer.id]) {
@@ -69,9 +71,10 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
     }
     setUrlInput("")
     setMessage(null)
+    setAddressSearch("")
+    setSearchResults([])
   }, [open, currentCustomer])
 
-  // Initialize map
   useEffect(() => {
     if (!open || !mapRef.current || typeof window === "undefined") return
 
@@ -95,7 +98,6 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
         mapInstanceRef.current = null
       }
 
-      // Istanbul merkez
       const defaultLat = 41.0082
       const defaultLng = 28.9784
 
@@ -114,7 +116,6 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
         attribution: "&copy; OpenStreetMap",
       }).addTo(map)
 
-      // Custom marker icon
       const icon = L.divIcon({
         html: `<div style="background: #22c55e; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>`,
         iconSize: [32, 32],
@@ -123,27 +124,11 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
       })
 
       const marker = L.marker([lat, lng], {
-        draggable: true,
+        draggable: false,
         icon: icon,
       }).addTo(map)
       markerRef.current = marker
 
-      // Marker drag event
-      marker.on("dragend", () => {
-        const pos = marker.getLatLng()
-        if (currentCustomer) {
-          setCoordinates((prev) => ({
-            ...prev,
-            [currentCustomer.id]: {
-              lat: pos.lat.toFixed(6),
-              lng: pos.lng.toFixed(6),
-            },
-          }))
-          setMessage({ type: "success", text: "Koordinat secildi! Marker'i surukleyerek ayarlayabilirsiniz." })
-        }
-      })
-
-      // Map click event
       map.on("click", (e: any) => {
         marker.setLatLng(e.latlng)
         if (currentCustomer) {
@@ -154,7 +139,7 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
               lng: e.latlng.lng.toFixed(6),
             },
           }))
-          setMessage({ type: "success", text: "Koordinat secildi! Marker'i surukleyerek ayarlayabilirsiniz." })
+          setMessage({ type: "success", text: "Koordinat secildi!" })
         }
       })
 
@@ -171,7 +156,6 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
     }
   }, [open, currentIndex])
 
-  // Update marker position when coordinates change
   useEffect(() => {
     if (!markerRef.current || !mapInstanceRef.current || !currentCustomer) return
     const currentCoords = coordinates[currentCustomer.id]
@@ -180,7 +164,7 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
       const lng = Number.parseFloat(currentCoords.lng)
       if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
         markerRef.current.setLatLng([lat, lng])
-        mapInstanceRef.current.setView([lat, lng], 15)
+        mapInstanceRef.current.setView([lat, lng], 16)
       }
     }
   }, [coordinates, currentCustomer])
@@ -198,7 +182,6 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
   const handlePasteUrl = async () => {
     let url = urlInput
 
-    // If empty, try to read from clipboard
     if (!url.trim()) {
       try {
         url = await navigator.clipboard.readText()
@@ -257,6 +240,70 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
     }
   }
 
+  const handleAddressSearch = async () => {
+    if (!addressSearch.trim()) {
+      setMessage({ type: "error", text: "Lutfen bir adres girin" })
+      return
+    }
+
+    setSearching(true)
+    setSearchResults([])
+    setMessage(null)
+
+    try {
+      const query = addressSearch.trim()
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=tr`,
+        {
+          headers: {
+            "User-Agent": "RouteOpt-VRP-App",
+          },
+        },
+      )
+
+      if (!response.ok) {
+        throw new Error("Arama basarisiz")
+      }
+
+      const data = await response.json()
+
+      if (data.length === 0) {
+        setMessage({ type: "error", text: "Adres bulunamadi. Farkli bir arama deneyin." })
+      } else {
+        setSearchResults(data)
+        setMessage({ type: "success", text: `${data.length} sonuc bulundu. Dogru adresi secin.` })
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: "Arama sirasinda hata olustu. Tekrar deneyin." })
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const handleSelectSearchResult = (result: any) => {
+    if (!currentCustomer) return
+
+    const lat = Number.parseFloat(result.lat)
+    const lng = Number.parseFloat(result.lon)
+
+    setCoordinates((prev) => ({
+      ...prev,
+      [currentCustomer.id]: {
+        lat: lat.toFixed(6),
+        lng: lng.toFixed(6),
+      },
+    }))
+
+    if (markerRef.current && mapInstanceRef.current) {
+      markerRef.current.setLatLng([lat, lng])
+      mapInstanceRef.current.setView([lat, lng], 16)
+    }
+
+    setSearchResults([])
+    setAddressSearch("")
+    setMessage({ type: "success", text: `Konum secildi: ${result.display_name}` })
+  }
+
   if (!currentCustomer) return null
 
   const currentCoords = coordinates[currentCustomer.id] || { lat: "", lng: "" }
@@ -265,7 +312,6 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] p-0 gap-0 flex flex-col">
-        {/* Header */}
         <DialogHeader className="px-6 py-4 border-b flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -293,12 +339,9 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
           </div>
         </DialogHeader>
 
-        {/* Content */}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
-          {/* Left Panel - Customer Info & Actions */}
           <div className="w-full lg:w-80 border-b lg:border-b-0 lg:border-r flex-shrink-0 overflow-y-auto max-h-[40vh] lg:max-h-none">
             <div className="p-4 space-y-4">
-              {/* Customer Card */}
               <div
                 className={`p-4 rounded-xl border-2 transition-colors ${isCurrentSaved ? "border-green-500 bg-green-50 dark:bg-green-950/20" : "border-amber-300 bg-amber-50 dark:bg-amber-950/20"}`}
               >
@@ -332,36 +375,83 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
                 )}
               </div>
 
-              {/* Instructions */}
               <div className="space-y-3">
                 <h4 className="font-semibold text-sm flex items-center gap-2">
                   <MousePointer2 className="h-4 w-4 text-primary" />
-                  Nasil Koordinat Girerim?
+                  Koordinat Nasil Girilir?
                 </h4>
 
                 <div className="space-y-2">
-                  <div className="flex gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                  <div className="flex gap-3 p-3 rounded-lg bg-muted/50">
                     <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">
                       1
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Adres Ara</p>
+                      <p className="text-xs text-muted-foreground mb-2">En kolay yontem - adres yazin, sonuc secin</p>
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Ornek: Taksim, Istanbul"
+                          value={addressSearch}
+                          onChange={(e) => setAddressSearch(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleAddressSearch()}
+                          className="h-9 text-sm"
+                        />
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-full"
+                          onClick={handleAddressSearch}
+                          disabled={searching || !addressSearch.trim()}
+                        >
+                          <Search className="h-3 w-3 mr-2" />
+                          {searching ? "Araniyor..." : "Ara"}
+                        </Button>
+
+                        {searchResults.length > 0 && (
+                          <div className="space-y-1 max-h-40 overflow-y-auto border rounded-lg p-2">
+                            {searchResults.map((result, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => handleSelectSearchResult(result)}
+                                className="w-full text-left px-2 py-1.5 hover:bg-muted rounded text-xs transition-colors"
+                              >
+                                <div className="font-medium truncate">{result.display_name}</div>
+                                <div className="text-muted-foreground text-[10px]">
+                                  {result.lat}, {result.lon}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center text-xs text-muted-foreground">veya</div>
+
+                  <div className="flex gap-3 p-3 rounded-lg bg-muted/50">
+                    <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">
+                      2
                     </div>
                     <div>
                       <p className="text-sm font-medium">Haritada Tiklayin</p>
                       <p className="text-xs text-muted-foreground">
-                        Sag taraftaki haritada konuma tiklayin veya yesil marker'i surukleyin
+                        Sag taraftaki haritada konuma tek tiklayin - yesil marker oraya konumlanir
                       </p>
                     </div>
                   </div>
 
                   <div className="text-center text-xs text-muted-foreground">veya</div>
 
-                  <div className="flex gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                  <div className="flex gap-3 p-3 rounded-lg bg-muted/50">
                     <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">
-                      2
+                      3
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium">Google Maps Kullanin</p>
+                      <p className="text-sm font-medium">Google Maps URL</p>
                       <p className="text-xs text-muted-foreground mb-2">
-                        Adresi Google Maps'te arayin, URL'yi kopyalayip yapistirin
+                        Google Maps'te konum bulun, URL'yi kopyalayin
                       </p>
                       <Button
                         variant="outline"
@@ -378,7 +468,6 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
                 </div>
               </div>
 
-              {/* URL Paste */}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-muted-foreground">Google Maps URL'sini Yapistir:</label>
                 <div className="flex gap-2">
@@ -386,6 +475,7 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
                     placeholder="https://google.com/maps/..."
                     value={urlInput}
                     onChange={(e) => setUrlInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handlePasteUrl()}
                     className="flex-1 h-9 text-sm"
                   />
                   <Button size="sm" variant="secondary" className="h-9 px-3" onClick={handlePasteUrl}>
@@ -395,16 +485,6 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
                 </div>
               </div>
 
-              {/* Message */}
-              {message && (
-                <div
-                  className={`p-3 rounded-lg text-sm ${message.type === "success" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"}`}
-                >
-                  {message.text}
-                </div>
-              )}
-
-              {/* Customer List */}
               <div>
                 <h4 className="font-semibold text-sm mb-2">Tum Musteriler</h4>
                 <div className="space-y-1">
@@ -436,20 +516,18 @@ export function MissingCoordinatesDialog({ open, onOpenChange, customers, onSave
             </div>
           </div>
 
-          {/* Right Panel - Map */}
           <div className="flex-1 flex flex-col min-h-[250px]">
             <div className="px-4 py-2 border-b bg-muted/30 flex items-center justify-between flex-shrink-0">
               <span className="text-sm font-medium flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-green-500" />
-                Haritada Konum Secin
+                Konumu Tek Tikla Secin
               </span>
-              <span className="text-xs text-muted-foreground">Tiklayin veya marker'i surukleyin</span>
+              <span className="text-xs text-muted-foreground">Haritaya tiklayin</span>
             </div>
             <div ref={mapRef} className="flex-1 min-h-[200px]" />
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t bg-muted/30 flex items-center justify-between flex-shrink-0">
           <div className="text-sm">
             {savedCount < customers.length ? (
