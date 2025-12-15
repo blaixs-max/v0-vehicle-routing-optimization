@@ -18,10 +18,13 @@ export interface Vehicle {
   vehicle_type: "kamyon" | "tir"
   capacity_pallets: number
   capacity_kg: number
+  capacity_m3: number // Hacim kapasitesi eklendi
   cost_per_km: number
   fuel_consumption_per_100km: number
   fixed_daily_cost: number
   avg_speed_kmh: number
+  max_work_hours: number // Maksimum çalışma saati (varsayılan 11)
+  mandatory_break_min: number // Zorunlu mola süresi (varsayılan 45 dk)
   status: "available" | "in_route" | "maintenance" | "inactive"
   created_at: string
   updated_at: string
@@ -39,6 +42,11 @@ export interface Customer {
   lng: number
   demand_pallets: number
   demand_kg: number
+  demand_m3: number // Hacim talebi eklendi
+  service_duration_min: number // Boşaltma/servis süresi eklendi
+  time_window_start: string | null // Teslimat başlangıç saati (örn: "09:00")
+  time_window_end: string | null // Teslimat bitiş saati (örn: "17:00")
+  required_vehicle_type: "any" | "kamyon" | "tir" // Müşteri bazlı araç tipi kısıtı
   priority: 1 | 2 | 3 | 4 | 5
   assigned_depot_id: string | null
   status: "pending" | "assigned" | "delivered"

@@ -23,7 +23,7 @@ interface VehicleFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   vehicle?: Vehicle | null
-  depots?: Depot[] // Made depots optional
+  depots?: Depot[]
   onSuccess?: () => void
 }
 
@@ -36,10 +36,13 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
     vehicle_type: "kamyon" as "kamyon" | "tir",
     capacity_pallets: "12",
     capacity_kg: "8000",
+    capacity_m3: "25", // Hacim kapasitesi eklendi
     cost_per_km: "2.20",
     fuel_consumption_per_100km: "18",
     fixed_daily_cost: "450",
     avg_speed_kmh: "65",
+    max_work_hours: "11", // Maksimum çalışma saati eklendi
+    mandatory_break_min: "45", // Zorunlu mola eklendi
     status: "available" as Vehicle["status"],
   })
 
@@ -56,10 +59,13 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
         vehicle_type: vehicle.vehicle_type,
         capacity_pallets: vehicle.capacity_pallets.toString(),
         capacity_kg: vehicle.capacity_kg.toString(),
+        capacity_m3: vehicle.capacity_m3?.toString() || "25", // Hacim kapasitesi
         cost_per_km: vehicle.cost_per_km.toString(),
         fuel_consumption_per_100km: vehicle.fuel_consumption_per_100km.toString(),
         fixed_daily_cost: vehicle.fixed_daily_cost.toString(),
         avg_speed_kmh: vehicle.avg_speed_kmh.toString(),
+        max_work_hours: vehicle.max_work_hours?.toString() || "11", // Çalışma saati
+        mandatory_break_min: vehicle.mandatory_break_min?.toString() || "45", // Mola süresi
         status: vehicle.status,
       })
     } else {
@@ -69,10 +75,13 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
         vehicle_type: "kamyon",
         capacity_pallets: "12",
         capacity_kg: "8000",
+        capacity_m3: "25",
         cost_per_km: "2.20",
         fuel_consumption_per_100km: "18",
         fixed_daily_cost: "450",
         avg_speed_kmh: "65",
+        max_work_hours: "11",
+        mandatory_break_min: "45",
         status: "available",
       })
     }
@@ -85,6 +94,7 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
       vehicle_type: type,
       capacity_pallets: config.capacity_pallets.toString(),
       capacity_kg: type === "kamyon" ? "8000" : "24000",
+      capacity_m3: type === "kamyon" ? "25" : "80", // Hacim TIR için daha büyük
       fuel_consumption_per_100km: config.fuel_consumption.toString(),
       avg_speed_kmh: config.avg_speed.toString(),
       cost_per_km: type === "kamyon" ? "2.20" : "3.50",
@@ -103,10 +113,13 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
       vehicle_type: form.vehicle_type,
       capacity_pallets: Number.parseInt(form.capacity_pallets),
       capacity_kg: Number.parseFloat(form.capacity_kg),
+      capacity_m3: Number.parseFloat(form.capacity_m3), // Hacim kaydediliyor
       cost_per_km: Number.parseFloat(form.cost_per_km),
       fuel_consumption_per_100km: Number.parseFloat(form.fuel_consumption_per_100km),
       fixed_daily_cost: Number.parseFloat(form.fixed_daily_cost),
       avg_speed_kmh: Number.parseInt(form.avg_speed_kmh),
+      max_work_hours: Number.parseInt(form.max_work_hours), // Çalışma saati kaydediliyor
+      mandatory_break_min: Number.parseInt(form.mandatory_break_min), // Mola kaydediliyor
       status: form.status,
     }
 
@@ -123,7 +136,7 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px]">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{vehicle ? "Araç Düzenle" : "Yeni Araç Ekle"}</DialogTitle>
           <DialogDescription>Araç bilgilerini girin.</DialogDescription>
@@ -199,12 +212,53 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="capacity_kg">Kapasite (kg)</Label>
+              <Label htmlFor="capacity_kg">Ağırlık (kg)</Label>
               <Input
                 id="capacity_kg"
                 type="number"
                 value={form.capacity_kg}
                 onChange={(e) => setForm({ ...form, capacity_kg: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="capacity_m3">Hacim (m³)</Label>
+              <Input
+                id="capacity_m3"
+                type="number"
+                step="0.1"
+                value={form.capacity_m3}
+                onChange={(e) => setForm({ ...form, capacity_m3: e.target.value })}
+                placeholder="25"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="max_work_hours">Maks. Çalışma (saat)</Label>
+              <Input
+                id="max_work_hours"
+                type="number"
+                min="8"
+                max="12"
+                value={form.max_work_hours}
+                onChange={(e) => setForm({ ...form, max_work_hours: e.target.value })}
+                placeholder="11"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mandatory_break_min">Zorunlu Mola (dk)</Label>
+              <Input
+                id="mandatory_break_min"
+                type="number"
+                min="30"
+                max="60"
+                value={form.mandatory_break_min}
+                onChange={(e) => setForm({ ...form, mandatory_break_min: e.target.value })}
+                placeholder="45"
                 required
               />
             </div>

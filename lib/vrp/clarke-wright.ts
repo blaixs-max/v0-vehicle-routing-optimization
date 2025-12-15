@@ -11,8 +11,16 @@ interface TempRoute {
   customers: string[]
   totalLoad: number
   totalKg: number
+  totalM3: number
   totalDistance: number
   totalDuration: number
+  earliestStart: number // dakika cinsinden (örn: 08:00 = 480)
+  latestEnd: number // dakika cinsinden (örn: 18:00 = 1080)
+}
+
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number)
+  return hours * 60 + minutes
 }
 
 export function clarkeWrightSavings(
@@ -56,13 +64,20 @@ export function clarkeWrightSavings(
   customers.forEach((customer, index) => {
     const distToDepot = getDistance(distanceMatrix, depot.id, customer.id)
     const durToDepot = getDuration(distanceMatrix, depot.id, customer.id)
+    const serviceDuration = customer.serviceDuration || 15 // varsayılan 15 dakika
+
+    const earliestStart = customer.timeWindowStart ? timeToMinutes(customer.timeWindowStart) : 0
+    const latestEnd = customer.timeWindowEnd ? timeToMinutes(customer.timeWindowEnd) : 24 * 60
 
     routes.push({
       customers: [customer.id],
       totalLoad: customer.demand,
-      totalKg: customer.demandKg,
+      totalKg: customer.demandKg || 0,
+      totalM3: customer.demandM3 || 0,
       totalDistance: distToDepot * 2, // round trip
-      totalDuration: durToDepot * 2,
+      totalDuration: durToDepot * 2 + serviceDuration,
+      earliestStart,
+      latestEnd,
     })
     customerRouteMap.set(customer.id, index)
   })
@@ -93,11 +108,37 @@ export function clarkeWrightSavings(
       continue
     }
 
-    // Find the best available vehicle for merged route
     const mergedLoad = route1.totalLoad + route2.totalLoad
     const mergedKg = route1.totalKg + route2.totalKg
+    const mergedM3 = route1.totalM3 + route2.totalM3
 
-    const availableVehicle = vehicles.find((v) => v.capacityPallets >= mergedLoad && v.capacityKg >= mergedKg)
+    const mergedEarliestStart = Math.min(route1.earliestStart, route2.earliestStart)
+    const mergedLatestEnd = Math.max(route1.latestEnd, route2.latestEnd)
+
+    const ci = customers.find((c) => c.id === i)
+    const cj = customers.find((c) => c.id === j)
+    const allCustomersInMerged = [...route1.customers, ...route2.customers]
+      .map((id) => customers.find((c) => c.id === id))
+      .filter(Boolean)
+
+    // Müşterilerin gerektirdiği araç tipleri
+    const requiredVehicleTypes = new Set<string>()
+    for (const customer of allCustomersInMerged) {
+      if (customer?.requiredVehicleTypes && customer.requiredVehicleTypes.length > 0) {
+        customer.requiredVehicleTypes.forEach((type) => requiredVehicleTypes.add(type))
+      }
+    }
+
+    const availableVehicle = vehicles.find((v) => {
+      const capacityOk =
+        (v.capacityPallets || v.capacityPallet || 0) >= mergedLoad &&
+        (v.capacityKg || 0) >= mergedKg &&
+        (v.capacityM3 || 999) >= mergedM3
+
+      const vehicleTypeOk = requiredVehicleTypes.size === 0 || requiredVehicleTypes.has(v.vehicleType || "")
+
+      return capacityOk && vehicleTypeOk
+    })
 
     if (!availableVehicle) {
       continue // No vehicle can handle merged route
@@ -116,7 +157,7 @@ export function clarkeWrightSavings(
       newCustomers = [...route1.customers, ...route2.customers.reverse()]
     }
 
-    // Calculate new distance
+    // Calculate new distance and duration
     let newDistance = getDistance(distanceMatrix, depot.id, newCustomers[0])
     let newDuration = getDuration(distanceMatrix, depot.id, newCustomers[0])
 
@@ -127,6 +168,18 @@ export function clarkeWrightSavings(
 
     newDistance += getDistance(distanceMatrix, newCustomers[newCustomers.length - 1], depot.id)
     newDuration += getDuration(distanceMatrix, newCustomers[newCustomers.length - 1], depot.id)
+
+    for (const customerId of newCustomers) {
+      const customer = customers.find((c) => c.id === customerId)
+      if (customer) {
+        newDuration += customer.serviceDuration || 15
+      }
+    }
+
+    const driverMaxWorkMinutes = (availableVehicle.driverMaxWorkHours || 11) * 60
+    if (newDuration > driverMaxWorkMinutes) {
+      continue // Sürücü çalışma saati aşıldı
+    }
 
     // Check max constraints
     if (params.maxRouteDistance && newDistance > params.maxRouteDistance) {
@@ -140,13 +193,17 @@ export function clarkeWrightSavings(
     route1.customers = newCustomers
     route1.totalLoad = mergedLoad
     route1.totalKg = mergedKg
+    route1.totalM3 = mergedM3
     route1.totalDistance = newDistance
     route1.totalDuration = newDuration
+    route1.earliestStart = mergedEarliestStart
+    route1.latestEnd = mergedLatestEnd
 
     // Clear route2
     route2.customers = []
     route2.totalLoad = 0
     route2.totalKg = 0
+    route2.totalM3 = 0
     route2.totalDistance = 0
     route2.totalDuration = 0
 
@@ -164,9 +221,22 @@ export function clarkeWrightSavings(
   const nonEmptyRoutes = routes.filter((r) => r.customers.length > 0).sort((a, b) => b.totalLoad - a.totalLoad)
 
   for (const route of nonEmptyRoutes) {
+    const routeCustomers = route.customers.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
+    const requiredVehicleTypes = new Set<string>()
+    for (const customer of routeCustomers) {
+      if (customer?.requiredVehicleTypes && customer.requiredVehicleTypes.length > 0) {
+        customer.requiredVehicleTypes.forEach((type) => requiredVehicleTypes.add(type))
+      }
+    }
+
     // Find best available vehicle
     const vehicle = vehicles.find(
-      (v) => !usedVehicles.has(v.id) && v.capacityPallets >= route.totalLoad && v.capacityKg >= route.totalKg,
+      (v) =>
+        !usedVehicles.has(v.id) &&
+        (v.capacityPallets || v.capacityPallet || 0) >= route.totalLoad &&
+        (v.capacityKg || 0) >= route.totalKg &&
+        (v.capacityM3 || 999) >= route.totalM3 &&
+        (requiredVehicleTypes.size === 0 || requiredVehicleTypes.has(v.vehicleType || "")),
     )
 
     if (!vehicle) {

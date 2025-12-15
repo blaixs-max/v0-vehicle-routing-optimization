@@ -35,6 +35,11 @@ const getInitialForm = (customer?: Customer | null, depots?: Depot[]) => ({
   lng: customer?.lng?.toString() || "",
   demand_pallets: customer?.demand_pallets?.toString() || "1",
   demand_kg: customer?.demand_kg?.toString() || "800",
+  demand_m3: customer?.demand_m3?.toString() || "2.4", // Hacim talebi eklendi
+  service_duration_min: customer?.service_duration_min?.toString() || "15", // Servis süresi eklendi
+  time_window_start: customer?.time_window_start || "", // Teslimat başlangıç saati
+  time_window_end: customer?.time_window_end || "", // Teslimat bitiş saati
+  required_vehicle_type: customer?.required_vehicle_type || "any", // Araç tipi kısıtı
   priority: customer?.priority?.toString() || "3",
   assigned_depot_id: customer?.assigned_depot_id || depots?.find((d) => d.city === "İstanbul")?.id || "",
   status: (customer?.status || "pending") as Customer["status"],
@@ -47,7 +52,6 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
   const prevOpen = useRef(open)
 
   useEffect(() => {
-    // Sadece dialog yeni açıldığında form'u güncelle
     if (open && !prevOpen.current) {
       setForm(getInitialForm(customer, depots))
     }
@@ -75,6 +79,11 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
       lng: Number.parseFloat(form.lng),
       demand_pallets: Number.parseInt(form.demand_pallets),
       demand_kg: Number.parseFloat(form.demand_kg),
+      demand_m3: Number.parseFloat(form.demand_m3), // Hacim kaydediliyor
+      service_duration_min: Number.parseInt(form.service_duration_min), // Servis süresi kaydediliyor
+      time_window_start: form.time_window_start || null, // Zaman penceresi
+      time_window_end: form.time_window_end || null,
+      required_vehicle_type: form.required_vehicle_type, // Araç tipi kısıtı
       priority: Number.parseInt(form.priority) as 1 | 2 | 3 | 4 | 5,
       assigned_depot_id: form.assigned_depot_id || null,
       status: form.status,
@@ -93,7 +102,7 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px]">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{customer ? "Müşteri Düzenle" : "Yeni Müşteri Ekle"}</DialogTitle>
           <DialogDescription>Müşteri/teslimat noktası bilgilerini girin.</DialogDescription>
@@ -187,13 +196,77 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="demand_kg">Talep (kg)</Label>
+              <Label htmlFor="demand_kg">Ağırlık (kg)</Label>
               <Input
                 id="demand_kg"
                 type="number"
                 value={form.demand_kg}
                 onChange={(e) => setForm({ ...form, demand_kg: e.target.value })}
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="demand_m3">Hacim (m³)</Label>
+              <Input
+                id="demand_m3"
+                type="number"
+                step="0.1"
+                value={form.demand_m3}
+                onChange={(e) => setForm({ ...form, demand_m3: e.target.value })}
+                placeholder="2.4"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="time_window_start">Teslimat Başlangıç</Label>
+              <Input
+                id="time_window_start"
+                type="time"
+                value={form.time_window_start}
+                onChange={(e) => setForm({ ...form, time_window_start: e.target.value })}
+                placeholder="09:00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="time_window_end">Teslimat Bitiş</Label>
+              <Input
+                id="time_window_end"
+                type="time"
+                value={form.time_window_end}
+                onChange={(e) => setForm({ ...form, time_window_end: e.target.value })}
+                placeholder="17:00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="service_duration_min">Boşaltma Süresi (dk)</Label>
+              <Input
+                id="service_duration_min"
+                type="number"
+                min="5"
+                value={form.service_duration_min}
+                onChange={(e) => setForm({ ...form, service_duration_min: e.target.value })}
+                placeholder="15"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Araç Tipi Kısıtı</Label>
+              <Select
+                value={form.required_vehicle_type}
+                onValueChange={(v) => setForm({ ...form, required_vehicle_type: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Herhangi Bir Araç</SelectItem>
+                  <SelectItem value="kamyon">Sadece Kamyon</SelectItem>
+                  <SelectItem value="tir">Sadece TIR</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Öncelik</Label>
@@ -210,24 +283,6 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Atanmış Depo</Label>
-              <Select value={form.assigned_depot_id} onValueChange={(v) => setForm({ ...form, assigned_depot_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Depo seçin" />
-                </SelectTrigger>
-                <SelectContent>
-                  {depots.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="space-y-2">
               <Label>Durum</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as Customer["status"] })}>
@@ -241,6 +296,22 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Atanmış Depo</Label>
+            <Select value={form.assigned_depot_id} onValueChange={(v) => setForm({ ...form, assigned_depot_id: v })}>
+              <SelectTrigger>
+                <SelectValue placeholder="Depo seçin" />
+              </SelectTrigger>
+              <SelectContent>
+                {depots.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter>
