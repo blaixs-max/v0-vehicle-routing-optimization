@@ -7,16 +7,12 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Python bağımlılıkları
 COPY requirements-railway.txt .
 RUN pip install --no-cache-dir -r requirements-railway.txt
 
-# Uygulama dosyaları
-COPY railway/main.py railway/
-COPY railway/ortools_optimizer.py railway/
-COPY railway_server.py .
+COPY railway/main.py main.py
+COPY railway/ortools_optimizer.py ortools_optimizer.py
 
-# Port
 EXPOSE 8080
 
-CMD ["python", "railway_server.py"]
+CMD python -c "import os; import uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))"
