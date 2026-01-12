@@ -4,7 +4,6 @@ import { ORSClient } from "@/lib/ors/client"
 import { calculateTollCosts } from "@/lib/toll-costs"
 import { exec } from "child_process"
 import { promisify } from "util"
-import path from "path"
 
 const execAsync = promisify(exec)
 const ORS_API_KEY = process.env.ORS_API_KEY
@@ -560,177 +559,143 @@ async function optimizeWithORTools(
     fuelPricePerLiter: number
     maxRouteDistanceKm?: number
     maxRouteTimeMin?: number
-    vehicleCapacityUtilization?: number
   },
 ) {
-  const startTime = Date.now()
+  try {
+    // Vercel Python API'yi çağır
+    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"
 
-  // Prepare input data for OR-Tools
-  const inputData = {
-    depots: depots.map((d) => ({
-      id: d.id,
-      name: d.name,
-      lat: d.lat,
-      lng: d.lng,
-    })),
-    vehicles: vehicles.map((v) => ({
-      id: v.id,
-      plate: v.plate,
-      vehicle_type: v.vehicle_type,
-      capacity_pallets: v.capacity_pallet || v.capacity_pallets || 12,
-      fuel_consumption: v.fuel_consumption_per_100km || 25,
-      depot_id: v.depot_id,
-    })),
-    customers: customers.map((c) => ({
-      id: c.id,
-      name: c.name,
-      lat: c.lat,
-      lng: c.lng,
-      demand_pallets: c.demand_pallets || c.demand_pallet || 1,
-      business_type: c.business_type || "DEFAULT",
-      time_window_start: c.time_window_start,
-      time_window_end: c.time_window_end,
-      special_constraint: c.special_constraint,
-      required_vehicle_types: c.required_vehicle_types,
-    })),
-    options: {
-      fuel_price_per_liter: options.fuelPricePerLiter,
-      max_route_distance_km: options.maxRouteDistanceKm,
-      max_route_time_min: options.maxRouteTimeMin,
-      capacity_utilization: options.vehicleCapacityUtilization || 0.9,
-    },
-  }
+    const response = await fetch(`${baseUrl}/api/optimize_ortools`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        customers: customers.map((c) => ({
+          id: c.id,
+          name: c.name,
+          latitude: c.latitude,
+          longitude: c.longitude,
+          demand_pallets: c.demand_pallets || 5,
+          business_type: c.business_type,
+          time_window_start: c.time_window_start,
+          time_window_end: c.time_window_end,
+          service_duration: c.service_duration,
+          allowed_vehicle_types: c.required_vehicle_types,
+          special_constraints: c.special_constraints,
+        })),
+        vehicles: vehicles.map((v) => ({
+          id: v.id,
+          plate: v.plate,
+          type: v.type,
+          capacity_pallets: v.capacity_pallets || 10,
+          fuel_consumption_per_100km: v.fuel_consumption_per_100km || 25,
+          driver_max_work_hours: v.driver_max_work_hours || 9,
+          driver_break_duration: v.driver_break_duration || 45,
+        })),
+        depots: depots.map((d) => ({
+          id: d.id,
+          name: d.name,
+          latitude: d.latitude,
+          longitude: d.longitude,
+        })),
+        settings: {
+          fuel_price_per_liter: options.fuelPricePerLiter,
+          max_route_distance_km: options.maxRouteDistanceKm,
+          max_route_time_min: options.maxRouteTimeMin,
+        },
+      }),
+    })
 
-  // Write input to temp file
-  const inputPath = path.join(process.cwd(), "scripts", "ortools_input.json")
-  const outputPath = path.join(process.cwd(), "scripts", "ortools_output.json")
-
-  const fs = require("fs")
-  fs.writeFileSync(inputPath, JSON.stringify(inputData, null, 2))
-
-  // Execute Python script
-  const scriptPath = path.join(process.cwd(), "scripts", "ortools_optimizer.py")
-  const { stdout, stderr } = await execAsync(`python3 "${scriptPath}" "${inputPath}" "${outputPath}"`)
-
-  if (stderr) {
-    console.error("[v0] OR-Tools stderr:", stderr)
-  }
-
-  // Read output
-  const output = JSON.parse(fs.readFileSync(outputPath, "utf-8"))
-
-  if (!output.success) {
-    throw new Error(output.error || "OR-Tools optimization failed")
-  }
-
-  // Enhance routes with ORS geometry and toll costs
-  const client = new ORSClient(ORS_API_KEY!)
-  for (const route of output.routes) {
-    const routePoints = [
-      { lat: route.depot_lat, lng: route.depot_lng },
-      ...route.stops.map((s: any) => ({ lat: s.lat, lng: s.lng })),
-      { lat: route.depot_lat, lng: route.depot_lng },
-    ]
-
-    try {
-      const geometryPoints = await client.getRouteGeometry(routePoints, "driving-hgv")
-      const tollCalculation = calculateTollCosts(geometryPoints, route.vehicle_type, route.total_distance)
-
-      route.geometry = geometryPoints
-      route.tollCost = tollCalculation.totalTollCost
-      route.tollCrossings = tollCalculation.crossings
-      route.highwayUsage = tollCalculation.highwayUsage
-      route.totalCost = route.fuelCost + route.fixedCost + route.distanceCost + tollCalculation.totalTollCost
-    } catch (e) {
-      console.warn("[v0] Failed to get geometry/toll for route:", route.vehicle_plate)
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "OR-Tools optimization failed")
     }
-  }
 
-  const computationTime = Date.now() - startTime
+    const result = await response.json()
 
-  return {
-    success: true,
-    provider: "ortools",
-    summary: {
-      ...output.summary,
-      computationTimeMs: computationTime,
-    },
-    routes: output.routes,
-    unassigned: output.unassigned || [],
+    // ORS'den geometri al (harita için)
+    const routesWithGeometry = await Promise.all(
+      result.routes.map(async (route: any) => {
+        if (route.stops.length === 0) return route
+
+        try {
+          const client = new ORSClient(ORS_API_KEY!)
+          const coordinates = [
+            [depots[0].longitude, depots[0].latitude],
+            ...route.stops.map((stop: any) => {
+              const customer = customers.find((c) => c.id === stop.customer_id)!
+              return [customer.longitude, customer.latitude]
+            }),
+            [depots[0].longitude, depots[0].latitude],
+          ]
+
+          const directions = await client.getDirections(coordinates)
+          const geometry = decodePolyline(directions.routes[0].geometry)
+
+          return {
+            ...route,
+            geometry,
+            duration: directions.routes[0].duration / 60,
+          }
+        } catch (err) {
+          return route
+        }
+      }),
+    )
+
+    return {
+      algorithm: "OR-Tools",
+      routes: routesWithGeometry,
+      summary: result.summary,
+    }
+  } catch (error) {
+    console.error("[v0] OR-Tools optimization failed:", error)
+    throw error
   }
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const {
-      depots,
-      vehicles,
-      customers,
-      algorithm = "ortools", // Default to OR-Tools
-      fuelPricePerLiter = 47.5,
-      maxRouteDistanceKm,
-      maxRouteTimeMin,
-      vehicleCapacityUtilization = 0.9,
-    } = body
+    const { depots, vehicles, customers, options = {} } = body
 
-    console.log("[v0] Optimize request:", {
-      algorithm,
-      depots: depots?.length,
-      vehicles: vehicles?.length,
+    console.log("[v0] Optimization request:", {
       customers: customers?.length,
+      vehicles: vehicles?.length,
+      depots: depots?.length,
+      algorithm: options.algorithm || "auto",
     })
 
-    if (!Array.isArray(depots) || depots.length === 0) {
-      return NextResponse.json({ error: "En az bir depo gereklidir" }, { status: 400 })
-    }
-
-    if (!Array.isArray(vehicles) || vehicles.length === 0) {
-      return NextResponse.json({ error: "En az bir araç gereklidir" }, { status: 400 })
-    }
-
-    if (!Array.isArray(customers) || customers.length === 0) {
-      return NextResponse.json({ error: "En az bir müşteri gereklidir" }, { status: 400 })
-    }
+    let result
+    const algorithm = options.algorithm || "ortools"
 
     if (algorithm === "ortools") {
       try {
-        console.log("[v0] Attempting OR-Tools optimization...")
-        const ortoolsResult = await optimizeWithORTools(depots, vehicles, customers, {
-          fuelPricePerLiter,
-          maxRouteDistanceKm,
-          maxRouteTimeMin,
-          vehicleCapacityUtilization,
+        result = await optimizeWithORTools(depots, vehicles, customers, {
+          fuelPricePerLiter: options.fuelPricePerLiter || 47.5,
+          maxRouteDistanceKm: options.maxRouteDistanceKm,
+          maxRouteTimeMin: options.maxRouteTimeMin,
         })
-
-        console.log("[v0] OR-Tools succeeded:", ortoolsResult.summary)
-        return NextResponse.json(ortoolsResult)
       } catch (ortoolsError) {
-        console.error("[v0] OR-Tools failed, falling back to ORS:", ortoolsError)
-        // Fall through to ORS
+        console.log("[v0] OR-Tools failed, falling back to ORS")
+        result = await optimizeWithORS(depots, vehicles, customers, {
+          fuelPricePerLiter: options.fuelPricePerLiter || 47.5,
+          maxRouteDistanceKm: options.maxRouteDistanceKm,
+          maxRouteTimeMin: options.maxRouteTimeMin,
+          vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.8,
+        })
       }
-    }
-
-    if (ORS_API_KEY && (algorithm === "ors" || algorithm === "ortools")) {
-      console.log("[v0] Using ORS optimization...")
-      const orsResult = await optimizeWithORS(depots, vehicles, customers, {
-        fuelPricePerLiter,
-        maxRouteDistanceKm,
-        maxRouteTimeMin,
-        vehicleCapacityUtilization,
+    } else {
+      result = await optimizeWithORS(depots, vehicles, customers, {
+        fuelPricePerLiter: options.fuelPricePerLiter || 47.5,
+        maxRouteDistanceKm: options.maxRouteDistanceKm,
+        maxRouteTimeMin: options.maxRouteTimeMin,
+        vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.8,
       })
-      return NextResponse.json(orsResult)
     }
 
-    // Final fallback: Local algorithm
-    console.log("[v0] Using local optimization (Clarke-Wright)...")
-    const localResult = localOptimize(depots, vehicles, customers, {
-      fuelPricePerLiter,
-      maxRouteDistanceKm,
-      maxRouteTimeMin,
-      vehicleCapacityUtilization,
-    })
-    return NextResponse.json(localResult)
+    return NextResponse.json(result)
   } catch (error) {
     console.error("Optimizasyon hatası:", error)
     return NextResponse.json(

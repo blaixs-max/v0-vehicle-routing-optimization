@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/optimize_ortools.py": {
+      "runtime": "python3.9"
+    }
+  }
+}
