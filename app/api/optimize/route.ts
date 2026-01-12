@@ -329,7 +329,16 @@ async function optimizeWithRailway(
 
   console.log("[v0] Valid customers:", validCustomers.length, "/ Total:", selectedCustomers.length)
 
-  const customersToOptimize = validCustomers.filter((c) => options.customersToOptimize.includes(c.id))
+  const customersToOptimize =
+    options?.customersToOptimize && options.customersToOptimize.length > 0
+      ? validCustomers.filter((c) => options.customersToOptimize.includes(c.id))
+      : validCustomers
+
+  console.log("[v0] Customers to optimize after filter:", customersToOptimize.length)
+
+  if (customersToOptimize.length === 0) {
+    throw new Error("Optimize edilecek müşteri bulunamadı")
+  }
 
   // Business type mapping
   const getBusinessType = (customer: any): string => {
@@ -389,7 +398,7 @@ async function optimizeWithRailway(
   }
 
   console.log("[v0] Calling Railway API:", `${RAILWAY_API_URL}/optimize`)
-  console.log("[v0] Request payload:", JSON.stringify(railwayRequest, null, 2))
+  console.log("[v0] Sending customers count:", railwayRequest.customers.length)
 
   try {
     const railwayResponse = await fetch(`${RAILWAY_API_URL}/optimize`, {
