@@ -23,7 +23,7 @@ import {
   AlertCircle,
   ExternalLink,
 } from "lucide-react"
-import { OSRM_CONFIG, VROOM_CONFIG, DEFAULTS, VEHICLE_TYPES } from "@/lib/constants"
+import { OSRM_CONFIG, VROOM_CONFIG, VEHICLE_TYPES } from "@/lib/constants"
 
 export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
@@ -36,11 +36,11 @@ export default function SettingsPage() {
     timezone: "Europe/Istanbul",
     currency: "TRY",
     distanceUnit: "km",
-    fuelPrice: DEFAULTS.fuelPricePerLiter,
-    maxRouteDistance: DEFAULTS.maxRouteDistance,
-    maxRouteDuration: DEFAULTS.maxRouteDuration,
-    serviceTimePerStop: DEFAULTS.serviceTimePerStop,
-    capacityUtilization: DEFAULTS.vehicleCapacityUtilization * 100,
+    fuelPrice: 47.5,
+    maxRouteDistance: 0, // Sınırsız
+    maxRouteDuration: 0, // Sadece sürücü 9 saat kuralı
+    serviceTimePerStop: 30, // Varsayılan (business'a göre değişir)
+    capacityUtilization: 90,
   })
 
   // Integration settings
@@ -204,13 +204,16 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="fuelPrice">Yakit Fiyati (TL/L)</Label>
+                    <Label htmlFor="fuelPrice">Yakıt Fiyati (TL/L) - 2026 Güncel</Label>
                     <Input
                       id="fuelPrice"
                       type="number"
+                      step="0.1"
                       value={settings.fuelPrice}
                       onChange={(e) => setSettings({ ...settings, fuelPrice: Number.parseFloat(e.target.value) })}
+                      className="font-semibold"
                     />
+                    <p className="text-xs text-slate-500">Maliyet hesaplaması için güncel yakıt fiyatını girin</p>
                   </div>
                 </div>
               </CardContent>

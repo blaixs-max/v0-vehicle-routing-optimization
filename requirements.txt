@@ -1,0 +1,5 @@
+# Google OR-Tools for Vehicle Routing Problem
+ortools>=9.7.2996
+
+# Optional: Performance optimizations
+numpy>=1.24.0

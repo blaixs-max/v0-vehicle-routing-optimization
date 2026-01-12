@@ -57,6 +57,7 @@ export function OptimizationPanel() {
   const [maxRouteDistance, setMaxRouteDistance] = useState<number | null>(null)
   const [maxRouteDuration, setMaxRouteDuration] = useState(600)
   const [useRealDistances, setUseRealDistances] = useState(true)
+  const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ortools")
 
   useEffect(() => {
     fetchData()
@@ -176,7 +177,9 @@ export function OptimizationPanel() {
     }, 500)
 
     try {
-      const response = await fetch("/api/optimize", {
+      const apiEndpoint = algorithm === "ortools" ? "/api/optimize-ortools" : "/api/optimize"
+
+      const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -348,6 +351,36 @@ export function OptimizationPanel() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Optimizasyon Algoritması</Label>
+                <Select value={algorithm} onValueChange={(v: "ors" | "ortools") => setAlgorithm(v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ortools">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-green-500" />
+                        <span>OR-Tools (Önerilen)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="ors">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-blue-500" />
+                        <span>ORS/VROOM</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {algorithm === "ortools"
+                    ? "Tüm kısıtları destekler: zaman penceresi, mola, servis süresi"
+                    : "Hızlı çözüm, sınırlı kısıt desteği"}
+                </p>
+              </div>
+
+              <Separator />
+
               {/* Depot Selection */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Depo Secimi</Label>
@@ -371,8 +404,6 @@ export function OptimizationPanel() {
                   </SelectContent>
                 </Select>
               </div>
-
-              <Separator />
 
               {/* Fuel Price */}
               <div className="space-y-2">
@@ -522,10 +553,9 @@ export function OptimizationPanel() {
             )}
           </Button>
 
-          {/* VROOM Status */}
           <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-            <Zap className="h-3 w-3 text-green-500" />
-            <span>VROOM Hazir</span>
+            <Zap className={`h-3 w-3 ${algorithm === "ortools" ? "text-green-500" : "text-blue-500"}`} />
+            <span>{algorithm === "ortools" ? "OR-Tools Hazır" : "VROOM Hazır"}</span>
           </div>
         </div>
 

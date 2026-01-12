@@ -1,9 +1,17 @@
 // Rota kısıt doğrulama fonksiyonları
 
 import type { Vehicle, Customer, Depot } from "@/types/database"
+import { DRIVER_RULES } from "@/lib/constants"
 
 export interface RouteConstraintViolation {
-  type: "time_window" | "capacity_weight" | "capacity_volume" | "capacity_pallet" | "work_hours" | "vehicle_type"
+  type:
+    | "time_window"
+    | "capacity_weight"
+    | "capacity_volume"
+    | "capacity_pallet"
+    | "work_hours"
+    | "vehicle_type"
+    | "driver_break"
   severity: "error" | "warning"
   message: string
   stopIndex?: number
@@ -15,6 +23,40 @@ export interface ValidatedRoute {
   stops: any[]
   vehicle: Vehicle
   depot: Depot
+}
+
+export function parseTimeRestrictions(restrictions: string | null): {
+  beforeTime: string | null // "20:00 den önce verilemiyor" → "20:00"
+  afterTime: string | null // "23:00 den sonra verilemiyor" → "23:00"
+  prohibitedPeriods: { start: string; end: string }[] // "08:00-19:00 arası verilemiyor"
+} {
+  if (!restrictions) return { beforeTime: null, afterTime: null, prohibitedPeriods: [] }
+
+  const result = {
+    beforeTime: null as string | null,
+    afterTime: null as string | null,
+    prohibitedPeriods: [] as { start: string; end: string }[],
+  }
+
+  // "20:00 den önce verilemiyor" → 20:00'dan SONRA teslim edilmeli
+  const beforeMatch = restrictions.match(/(\d{2}:\d{2})\s*den\s*önce\s*verilemiyor/i)
+  if (beforeMatch) {
+    result.beforeTime = beforeMatch[1]
+  }
+
+  // "23:00 den sonra verilemiyor" → 23:00'dan ÖNCE teslim edilmeli
+  const afterMatch = restrictions.match(/(\d{2}:\d{2})\s*den\s*sonra\s*verilemiyor/i)
+  if (afterMatch) {
+    result.afterTime = afterMatch[1]
+  }
+
+  // "08:00-19:00 arası verilemiyor" → Bu saat aralığında yasak
+  const periodMatch = restrictions.match(/(\d{2}:\d{2})-(\d{2}:\d{2})\s*arası\s*verilemiyor/i)
+  if (periodMatch) {
+    result.prohibitedPeriods.push({ start: periodMatch[1], end: periodMatch[2] })
+  }
+
+  return result
 }
 
 // Zaman penceresi kontrolü
@@ -135,6 +177,25 @@ export function validateWorkHours(totalDuration: number, vehicle: Vehicle): Rout
   return violations
 }
 
+export function validateDriverBreak(drivingTimeMinutes: number, vehicle: Vehicle): RouteConstraintViolation[] {
+  const violations: RouteConstraintViolation[] = []
+
+  const maxDrivingBeforeBreak = (vehicle.driver_break_after_hours || DRIVER_RULES.break_after_hours) * 60
+  const breakDuration = vehicle.driver_break_duration || DRIVER_RULES.break_duration
+
+  if (drivingTimeMinutes > maxDrivingBeforeBreak) {
+    // Mola gerekli
+    const expectedBreaks = Math.floor(drivingTimeMinutes / maxDrivingBeforeBreak)
+    violations.push({
+      type: "driver_break",
+      severity: "warning",
+      message: `${expectedBreaks} mola gerekli (${maxDrivingBeforeBreak} dk başına ${breakDuration} dk mola)`,
+    })
+  }
+
+  return violations
+}
+
 // Araç tipi uygunluk kontrolü
 export function validateVehicleType(stops: any[], vehicle: Vehicle, customers: Customer[]): RouteConstraintViolation[] {
   const violations: RouteConstraintViolation[] = []
@@ -171,6 +232,9 @@ export function validateRoute(route: any, vehicle: Vehicle, depot: Depot, custom
 
   // Çalışma saati kontrolü
   violations.push(...validateWorkHours(route.totalDuration || 0, vehicle))
+
+  // Sürücü mola kontrolü
+  violations.push(...validateDriverBreak(route.totalDuration || 0, vehicle))
 
   // Araç tipi kontrolü
   violations.push(...validateVehicleType(route.stops, vehicle, customers))

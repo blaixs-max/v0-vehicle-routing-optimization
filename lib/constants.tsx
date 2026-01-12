@@ -39,9 +39,36 @@ export const DEPOT_COLORS: Record<string, { primary: string; secondary: string; 
 
 // Vehicle types with pallet capacities
 export const VEHICLE_TYPES = {
-  TIR: { name: "TIR", capacity_pallets: 33, capacity_kg: 24000, fuel_consumption: 35 },
-  Kamyon: { name: "Kamyon", capacity_pallets: 15, capacity_kg: 12000, fuel_consumption: 22 },
-  Kamyonet: { name: "Kamyonet", capacity_pallets: 6, capacity_kg: 3500, fuel_consumption: 12 },
+  kamyonet: {
+    name: "Kamyonet",
+    capacity_pallets: 10,
+    fuel_consumption: 15, // L/100km
+    type_code: 1,
+  },
+  kamyon_1: {
+    name: "Kamyon Tip 1",
+    capacity_pallets: 14,
+    fuel_consumption: 20,
+    type_code: 2,
+  },
+  kamyon_2: {
+    name: "Kamyon Tip 2",
+    capacity_pallets: 18,
+    fuel_consumption: 30,
+    type_code: 3,
+  },
+  tir: {
+    name: "TIR",
+    capacity_pallets: 32,
+    fuel_consumption: 35,
+    type_code: 4,
+  },
+  romork: {
+    name: "Kamyon Romork",
+    capacity_pallets: 36,
+    fuel_consumption: 40,
+    type_code: 5,
+  },
 }
 
 // OSRM Configuration
@@ -64,7 +91,7 @@ export const VROOM_CONFIG = {
 }
 
 // Fuel price (TL per liter)
-export const DEFAULT_FUEL_PRICE = 45
+export const DEFAULT_FUEL_PRICE = 47.5
 
 // Status colors
 export const STATUS_COLORS = {
@@ -99,12 +126,26 @@ export const ROUTE_COLORS = [
   "#6366f1", // indigo
 ]
 
+export const SERVICE_DURATION_BY_BUSINESS = {
+  MCD: 60, // McDonald's - 60 dakika
+  IKEA: 45, // IKEA - 45 dakika
+  CHL: 30, // Chocolabs - 30 dakika
+  OPT: 30, // Opet - 30 dakika
+  OTHER: 30, // Varsayılan - 30 dakika
+}
+
+export const DRIVER_RULES = {
+  max_work_hours: 9, // Toplam 9 saat sürüş
+  break_duration: 45, // 45 dakika mola
+  break_after_hours: 4.5, // 4.5 saat sonra mola zorunlu
+}
+
 // Defaults
 export const DEFAULTS = {
-  fuelPricePerLiter: 45,
+  fuelPricePerLiter: 47.5, // 2026 güncel yakıt fiyatı (manuel girilmeli)
   vehicleCapacityUtilization: 0.9,
-  maxRouteDistance: 500, // km
-  maxRouteDuration: 480, // minutes (8 hours)
-  serviceTimePerStop: 15, // minutes
-  averageSpeed: 60, // km/h
+  maxRouteDistance: 0, // Sınırsız
+  maxRouteDuration: 0, // Sadece sürücü çalışma saati kontrolü
+  serviceTimePerStop: 30, // Varsayılan 30 dk (business'a göre değişir)
+  averageSpeed: 50, // km/h
 }

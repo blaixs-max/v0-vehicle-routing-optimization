@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MoreHorizontal, Pencil, Trash2, Search, MapPin, AlertTriangle } from "lucide-react"
-import { DEPOT_COLORS, PRIORITY_LABELS } from "@/lib/constants"
+import { DEPOT_COLORS } from "@/lib/constants"
 import { CustomerFormDialog } from "./customer-form-dialog"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -213,10 +213,7 @@ export function CustomersTable() {
               <TableHead>Koordinat</TableHead>
               <TableHead>Zaman Penceresi</TableHead>
               <TableHead>Servis Süresi</TableHead>
-              <TableHead>Talep (Palet)</TableHead>
-              <TableHead>Hacim (m³)</TableHead>
               <TableHead>Araç Tipi</TableHead>
-              <TableHead>Öncelik</TableHead>
               <TableHead>Depo</TableHead>
               <TableHead className="w-12"></TableHead>
             </TableRow>
@@ -263,18 +260,6 @@ export function CustomersTable() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="font-medium">{customer.demand_pallet || customer.demand_pallets}</span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-xs">
-                      {customer.demand_m3 ? (
-                        <span className="font-medium">{customer.demand_m3} m³</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
                     <div className="text-xs">
                       {customer.required_vehicle_types && customer.required_vehicle_types.length > 0 ? (
                         <div className="flex gap-1 flex-wrap">
@@ -288,11 +273,6 @@ export function CustomersTable() {
                         <span className="text-muted-foreground">Hepsi</span>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={`${PRIORITY_LABELS[customer.priority]?.color || "bg-gray-500"} text-white`}>
-                      {PRIORITY_LABELS[customer.priority]?.label || `P${customer.priority}`}
-                    </Badge>
                   </TableCell>
                   <TableCell>
                     {customer.assigned_depot ? (
@@ -383,9 +363,6 @@ export function CustomersTable() {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap mb-3">
-                <Badge className={`${PRIORITY_LABELS[customer.priority]?.color || "bg-gray-500"} text-white text-xs`}>
-                  {PRIORITY_LABELS[customer.priority]?.label || `P${customer.priority}`}
-                </Badge>
                 {customer.assigned_depot ? (
                   <Badge
                     variant="outline"
@@ -405,10 +382,14 @@ export function CustomersTable() {
                 <span className="text-xs text-slate-500">{customer.city}</span>
               </div>
 
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center justify-between text-xs mb-2">
                 <div className="flex items-center gap-1">
-                  <span className="font-medium">{customer.demand_pallet || customer.demand_pallets}</span>
-                  <span className="text-slate-500">palet</span>
+                  <span className="text-slate-500">Zaman:</span>
+                  <span className="font-medium">
+                    {customer.time_window_start && customer.time_window_end
+                      ? `${customer.time_window_start} - ${customer.time_window_end}`
+                      : "Yok"}
+                  </span>
                 </div>
                 {hasValidCoords ? (
                   <div className="flex items-center gap-1 text-slate-500 font-mono">
@@ -425,24 +406,13 @@ export function CustomersTable() {
 
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1">
-                  <span className="font-medium">
-                    {customer.time_window_start && customer.time_window_end
-                      ? `${customer.time_window_start} - ${customer.time_window_end}`
-                      : "Yok"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
+                  <span className="text-slate-500">Servis:</span>
                   <span className="font-medium">
                     {customer.service_duration ? `${customer.service_duration} dk` : "-"}
                   </span>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1">
-                  <span className="font-medium">{customer.demand_m3 ? `${customer.demand_m3} m³` : "-"}</span>
-                </div>
-                <div className="flex items-center gap-1">
+                  <span className="text-slate-500">Araç:</span>
                   <span className="font-medium">
                     {customer.required_vehicle_types && customer.required_vehicle_types.length > 0
                       ? customer.required_vehicle_types.join(", ")

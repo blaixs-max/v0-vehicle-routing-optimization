@@ -11,6 +11,7 @@ export interface Point {
   requiredVehicleType: "any" | "kamyon" | "tir" // Araç tipi kısıtı
   priority: number
   name?: string
+  businessType?: "MCD" | "IKEA" | "CHL" | "OPT" | "OTHER"
 }
 
 export interface DepotPoint extends Point {
@@ -21,16 +22,17 @@ export interface VehicleConfig {
   id: string
   depotId: string
   plate: string
-  vehicleType: "kamyon" | "tir" // Araç tipi
+  vehicleType: "kamyonet" | "kamyon_1" | "kamyon_2" | "tir" | "romork"
   capacityPallets: number
-  capacityKg: number
-  capacityM3: number // Hacim kapasitesi
-  costPerKm: number
+  capacityKg: number // Kullanılmayacak
+  capacityM3: number // Kullanılmayacak
+  costPerKm: number // Kapsam dışı
   fuelConsumptionPer100km: number
-  fixedDailyCost: number
+  fixedDailyCost: number // Kapsam dışı
   avgSpeedKmh: number
-  maxWorkHours: number // Maksimum çalışma saati
-  mandatoryBreakMin: number // Zorunlu mola
+  maxWorkHours: number // 9 saat
+  mandatoryBreakMin: number // 45 dakika
+  breakAfterHours: number // 4.5 saat
 }
 
 export interface RouteResult {
@@ -38,7 +40,6 @@ export interface RouteResult {
   depotId: string
   stops: string[] // customer IDs in order
   stopTimes: {
-    // Her durağın varış zamanı
     customerId: string
     arrivalTime: string // HH:mm formatında
     departureTime: string // Servis sonrası çıkış
@@ -51,10 +52,9 @@ export interface RouteResult {
   totalLoad: number // pallets
   totalKg: number
   totalM3: number // Toplam hacim
-  totalCost: number
+  totalCost: number // Yakıt + Geçiş
   fuelCost: number
-  distanceCost: number
-  fixedCost: number
+  tollCost: number // Köprü/otoyol
   feasible: boolean // Rotanın fizibilitesi
   violations: string[] // Kısıt ihlalleri listesi
 }

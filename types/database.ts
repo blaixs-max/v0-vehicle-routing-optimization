@@ -15,16 +15,17 @@ export interface Vehicle {
   id: string
   depot_id: string
   plate: string
-  vehicle_type: "kamyon" | "tir"
+  vehicle_type: "kamyonet" | "kamyon_1" | "kamyon_2" | "tir" | "romork"
   capacity_pallets: number
-  capacity_kg: number
-  capacity_m3: number // Hacim kapasitesi eklendi
-  cost_per_km: number
+  capacity_kg: number // Kullanılmayacak ama yapıda tutuluyor
+  capacity_m3: number // Kullanılmayacak ama yapıda tutuluyor
+  cost_per_km: number // Kapsam dışı ama yapıda tutuluyor
   fuel_consumption_per_100km: number
-  fixed_daily_cost: number
+  fixed_daily_cost: number // Kapsam dışı ama yapıda tutuluyor
   avg_speed_kmh: number
-  max_work_hours: number // Maksimum çalışma saati (varsayılan 11)
-  mandatory_break_min: number // Zorunlu mola süresi (varsayılan 45 dk)
+  driver_max_work_hours: number // 9 saat toplam sürüş
+  driver_break_duration: number // 45 dakika zorunlu mola
+  driver_break_after_hours: number // 4.5 saat sonra mola
   status: "available" | "in_route" | "maintenance" | "inactive"
   created_at: string
   updated_at: string
@@ -34,20 +35,17 @@ export interface Vehicle {
 
 export interface Customer {
   id: string
+  customer_code: string // Müşteri kodu eklendi (Master data ile eşleşme için)
   name: string
   address: string
   city: string
   district: string | null
   lat: number
   lng: number
-  demand_pallets: number
-  demand_kg: number
-  demand_m3: number // Hacim talebi eklendi
-  service_duration_min: number // Boşaltma/servis süresi eklendi
-  time_window_start: string | null // Teslimat başlangıç saati (örn: "09:00")
-  time_window_end: string | null // Teslimat bitiş saati (örn: "17:00")
-  required_vehicle_type: "any" | "kamyon" | "tir" // Müşteri bazlı araç tipi kısıtı
-  priority: 1 | 2 | 3 | 4 | 5
+  business_type: "MCD" | "IKEA" | "CHL" | "OPT" | "OTHER" | null // Business tipi eklendi
+  service_duration_min: number // Business bazlı: MCD=60, IKEA=45, CHL=30, OPT=30, varsayılan=30
+  time_restrictions: string | null // Örn: "20:00 den önce verilemiyor" veya "08:00-19:00 arası verilemiyor"
+  allowed_vehicle_types: ("kamyonet" | "kamyon_1" | "kamyon_2" | "tir" | "romork")[] | null
   assigned_depot_id: string | null
   status: "pending" | "assigned" | "delivered"
   created_at: string
@@ -127,4 +125,18 @@ export interface DashboardStats {
   todayRoutes: number
   totalDistance: number
   totalCost: number
+}
+
+export interface Order {
+  id: string
+  order_date: string // YYYY-MM-DD
+  customer_code: string // Master customer ile eşleşir
+  customer_name: string
+  business_type: "MCD" | "IKEA" | "CHL" | "OPT" | "OTHER"
+  pallet_count: number // Siparişteki palet sayısı
+  order_details: string // Sipariş detayı (opsiyonel)
+  status: "pending" | "assigned" | "in_route" | "delivered"
+  assigned_route_id: string | null
+  created_at: string
+  updated_at: string
 }

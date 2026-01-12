@@ -2,11 +2,15 @@ import { NextResponse } from "next/server"
 import type { Depot, Vehicle, Customer } from "@/lib/types"
 import { ORSClient } from "@/lib/ors/client"
 import { calculateTollCosts } from "@/lib/toll-costs"
-import { clarkeWrightOptimize } from "@/lib/vrp/clarke-wright"
-import { validateRoute } from "@/lib/vrp/constraint-validator"
+import { exec } from "child_process"
+import { promisify } from "util"
+import path from "path"
 
+const execAsync = promisify(exec)
 const ORS_API_KEY = process.env.ORS_API_KEY
-const ORS_MAX_VEHICLES = 3 // ORS ücretsiz plan limiti
+
+// Debug log ekle - ORS API key durumunu göster
+console.log("[v0] ORS_API_KEY exists:", !!ORS_API_KEY, "Length:", ORS_API_KEY?.length || 0)
 
 // Haversine mesafe hesaplama (fallback için)
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -128,8 +132,8 @@ async function optimizeWithORS(
 
     // Araçları 3'erli gruplara böl (ORS limiti)
     const vehicleBatches: Vehicle[][] = []
-    for (let i = 0; i < depotVehicles.length; i += ORS_MAX_VEHICLES) {
-      vehicleBatches.push(depotVehicles.slice(i, i + ORS_MAX_VEHICLES))
+    for (let i = 0; i < depotVehicles.length; i += 3) {
+      vehicleBatches.push(depotVehicles.slice(i, i + 3))
     }
 
     let remainingCustomers = [...depotCustomers]
@@ -210,7 +214,7 @@ async function optimizeWithORS(
 
           let totalDistance = routeDistanceKm
           let totalDuration = routeDurationMin
-          let distanceSource = "ors" // Debug icin kaynak takibi
+          let distanceSource = "ors" // Debug için kaynak takibi
 
           // ORS mesafe dönmezse Haversine fallback
           if (totalDistance === 0 && stops.length > 0) {
@@ -245,7 +249,7 @@ async function optimizeWithORS(
               // Decode hatasi - routePoints kullan
             }
           } else {
-            // ORS Directions API ile gercek rota geometrisi al
+            // ORS Directions API ile gerçek rota geometrisi al
             try {
               geometryPoints = await client.getRouteGeometry(routePoints, "driving-hgv")
             } catch (e) {
@@ -466,7 +470,7 @@ function localOptimize(
       if (routeStops.length > 0) {
         const returnDistance = haversineDistance(currentLat, currentLng, depot.lat, depot.lng)
         totalDistance += returnDistance
-        const distanceSource = "local" // Debug icin kaynak takibi
+        const distanceSource = "local" // Debug için kaynak takibi
 
         const routePoints = [
           { lat: depot.lat, lng: depot.lng },
@@ -547,131 +551,192 @@ function localOptimize(
   }
 }
 
+// OR-Tools optimization via Python script
+async function optimizeWithORTools(
+  depots: Depot[],
+  vehicles: Vehicle[],
+  customers: Customer[],
+  options: {
+    fuelPricePerLiter: number
+    maxRouteDistanceKm?: number
+    maxRouteTimeMin?: number
+    vehicleCapacityUtilization?: number
+  },
+) {
+  const startTime = Date.now()
+
+  // Prepare input data for OR-Tools
+  const inputData = {
+    depots: depots.map((d) => ({
+      id: d.id,
+      name: d.name,
+      lat: d.lat,
+      lng: d.lng,
+    })),
+    vehicles: vehicles.map((v) => ({
+      id: v.id,
+      plate: v.plate,
+      vehicle_type: v.vehicle_type,
+      capacity_pallets: v.capacity_pallet || v.capacity_pallets || 12,
+      fuel_consumption: v.fuel_consumption_per_100km || 25,
+      depot_id: v.depot_id,
+    })),
+    customers: customers.map((c) => ({
+      id: c.id,
+      name: c.name,
+      lat: c.lat,
+      lng: c.lng,
+      demand_pallets: c.demand_pallets || c.demand_pallet || 1,
+      business_type: c.business_type || "DEFAULT",
+      time_window_start: c.time_window_start,
+      time_window_end: c.time_window_end,
+      special_constraint: c.special_constraint,
+      required_vehicle_types: c.required_vehicle_types,
+    })),
+    options: {
+      fuel_price_per_liter: options.fuelPricePerLiter,
+      max_route_distance_km: options.maxRouteDistanceKm,
+      max_route_time_min: options.maxRouteTimeMin,
+      capacity_utilization: options.vehicleCapacityUtilization || 0.9,
+    },
+  }
+
+  // Write input to temp file
+  const inputPath = path.join(process.cwd(), "scripts", "ortools_input.json")
+  const outputPath = path.join(process.cwd(), "scripts", "ortools_output.json")
+
+  const fs = require("fs")
+  fs.writeFileSync(inputPath, JSON.stringify(inputData, null, 2))
+
+  // Execute Python script
+  const scriptPath = path.join(process.cwd(), "scripts", "ortools_optimizer.py")
+  const { stdout, stderr } = await execAsync(`python3 "${scriptPath}" "${inputPath}" "${outputPath}"`)
+
+  if (stderr) {
+    console.error("[v0] OR-Tools stderr:", stderr)
+  }
+
+  // Read output
+  const output = JSON.parse(fs.readFileSync(outputPath, "utf-8"))
+
+  if (!output.success) {
+    throw new Error(output.error || "OR-Tools optimization failed")
+  }
+
+  // Enhance routes with ORS geometry and toll costs
+  const client = new ORSClient(ORS_API_KEY!)
+  for (const route of output.routes) {
+    const routePoints = [
+      { lat: route.depot_lat, lng: route.depot_lng },
+      ...route.stops.map((s: any) => ({ lat: s.lat, lng: s.lng })),
+      { lat: route.depot_lat, lng: route.depot_lng },
+    ]
+
+    try {
+      const geometryPoints = await client.getRouteGeometry(routePoints, "driving-hgv")
+      const tollCalculation = calculateTollCosts(geometryPoints, route.vehicle_type, route.total_distance)
+
+      route.geometry = geometryPoints
+      route.tollCost = tollCalculation.totalTollCost
+      route.tollCrossings = tollCalculation.crossings
+      route.highwayUsage = tollCalculation.highwayUsage
+      route.totalCost = route.fuelCost + route.fixedCost + route.distanceCost + tollCalculation.totalTollCost
+    } catch (e) {
+      console.warn("[v0] Failed to get geometry/toll for route:", route.vehicle_plate)
+    }
+  }
+
+  const computationTime = Date.now() - startTime
+
+  return {
+    success: true,
+    provider: "ortools",
+    summary: {
+      ...output.summary,
+      computationTimeMs: computationTime,
+    },
+    routes: output.routes,
+    unassigned: output.unassigned || [],
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { depots, vehicles, customers, options = {} } = body
+    const {
+      depots,
+      vehicles,
+      customers,
+      algorithm = "ortools", // Default to OR-Tools
+      fuelPricePerLiter = 47.5,
+      maxRouteDistanceKm,
+      maxRouteTimeMin,
+      vehicleCapacityUtilization = 0.9,
+    } = body
 
-    // Normalize options - handle both camelCase and snake_case
-    const normalizedOptions = {
-      fuelPricePerLiter: options.fuelPrice || options.fuelPricePerLiter || 47.5,
-      maxRouteDistanceKm: options.maxRouteDistance || options.maxRouteDistanceKm,
-      maxRouteTimeMin: options.maxRouteDuration || options.maxRouteTimeMin,
-      vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.9,
+    console.log("[v0] Optimize request:", {
+      algorithm,
+      depots: depots?.length,
+      vehicles: vehicles?.length,
+      customers: customers?.length,
+    })
+
+    if (!Array.isArray(depots) || depots.length === 0) {
+      return NextResponse.json({ error: "En az bir depo gereklidir" }, { status: 400 })
     }
 
-    if (!depots?.length || !vehicles?.length || !customers?.length) {
-      return NextResponse.json(
-        { success: false, error: "Eksik veri: depolar, araçlar ve müşteriler gerekli" },
-        { status: 400 },
-      )
+    if (!Array.isArray(vehicles) || vehicles.length === 0) {
+      return NextResponse.json({ error: "En az bir araç gereklidir" }, { status: 400 })
     }
 
-    // ORS API anahtarı varsa ORS kullan, yoksa yerel optimizer
-    if (ORS_API_KEY) {
-      // 1. ORS ile optimize et (hızlı, gerçek yol verileri)
-      const orsResult = await optimizeWithORS(depots, vehicles, customers, normalizedOptions)
+    if (!Array.isArray(customers) || customers.length === 0) {
+      return NextResponse.json({ error: "En az bir müşteri gereklidir" }, { status: 400 })
+    }
 
-      // 2. ORS sonuçlarını kısıt kontrolünden geçir
-      const validatedRoutes = []
-      const invalidRoutes = []
-
-      for (const route of orsResult.routes) {
-        const vehicle = vehicles.find((v) => v.id === route.vehicleId)
-        const depot = depots.find((d) => d.id === vehicle?.depot_id) || depots[0]
-
-        const validation = validateRoute(route, vehicle!, depot, customers)
-
-        if (validation.isValid) {
-          validatedRoutes.push({
-            ...route,
-            validationStatus: "valid",
-          })
-        } else {
-          invalidRoutes.push({
-            ...route,
-            validationStatus: "invalid",
-            violations: validation.violations,
-          })
-        }
-      }
-
-      // 3. İhlalli rotalar varsa Clarke-Wright ile yeniden optimize et
-      if (invalidRoutes.length > 0) {
-        console.log(
-          `[v0] ${invalidRoutes.length} rota kısıt ihlali içeriyor, Clarke-Wright ile yeniden optimize ediliyor...`,
-        )
-
-        // İhlalli rotalardaki müşterileri topla
-        const invalidCustomerIds = new Set<string>()
-        for (const route of invalidRoutes) {
-          for (const stop of route.stops) {
-            invalidCustomerIds.add(stop.customerId)
-          }
-        }
-
-        const invalidCustomers = customers.filter((c) => invalidCustomerIds.has(c.id))
-
-        // Clarke-Wright ile yeniden optimize et
-        const cwResult = clarkeWrightOptimize(depots, vehicles, invalidCustomers, normalizedOptions)
-
-        // Clarke-Wright sonuçlarını da doğrula
-        const cwValidatedRoutes = []
-        for (const route of cwResult.routes) {
-          const vehicle = vehicles.find((v) => v.id === route.vehicleId)
-          const depot = depots.find((d) => d.id === vehicle?.depot_id) || depots[0]
-
-          const validation = validateRoute(route, vehicle!, depot, customers)
-
-          cwValidatedRoutes.push({
-            ...route,
-            validationStatus: validation.isValid ? "valid" : "partial",
-            violations: validation.violations,
-            provider: "clarke-wright",
-          })
-        }
-
-        // Sonuçları birleştir
-        return NextResponse.json({
-          ...orsResult,
-          routes: [...validatedRoutes.map((r) => ({ ...r, provider: "ors" })), ...cwValidatedRoutes],
-          summary: {
-            ...orsResult.summary,
-            totalRoutes: validatedRoutes.length + cwValidatedRoutes.length,
-            validRoutes:
-              validatedRoutes.length + cwValidatedRoutes.filter((r) => r.validationStatus === "valid").length,
-            constraintViolations: cwValidatedRoutes.filter((r) => r.validationStatus === "partial").length,
-          },
-          provider: "hybrid",
-          computationTime: Date.now() - Date.parse(orsResult.computationTime),
+    if (algorithm === "ortools") {
+      try {
+        console.log("[v0] Attempting OR-Tools optimization...")
+        const ortoolsResult = await optimizeWithORTools(depots, vehicles, customers, {
+          fuelPricePerLiter,
+          maxRouteDistanceKm,
+          maxRouteTimeMin,
+          vehicleCapacityUtilization,
         })
-      }
 
-      // Tüm rotalar geçerliyse ORS sonucunu döndür
-      return NextResponse.json({
-        ...orsResult,
-        routes: validatedRoutes.map((r) => ({ ...r, provider: "ors" })),
-        provider: "ors",
-        summary: {
-          ...orsResult.summary,
-          validRoutes: validatedRoutes.length,
-          constraintViolations: 0,
-        },
-      })
-    } else {
-      // API key yoksa Clarke-Wright kullan
-      const result = clarkeWrightOptimize(depots, vehicles, customers, normalizedOptions)
-      return NextResponse.json({
-        ...result,
-        provider: "clarke-wright",
-      })
+        console.log("[v0] OR-Tools succeeded:", ortoolsResult.summary)
+        return NextResponse.json(ortoolsResult)
+      } catch (ortoolsError) {
+        console.error("[v0] OR-Tools failed, falling back to ORS:", ortoolsError)
+        // Fall through to ORS
+      }
     }
-  } catch (error: any) {
+
+    if (ORS_API_KEY && (algorithm === "ors" || algorithm === "ortools")) {
+      console.log("[v0] Using ORS optimization...")
+      const orsResult = await optimizeWithORS(depots, vehicles, customers, {
+        fuelPricePerLiter,
+        maxRouteDistanceKm,
+        maxRouteTimeMin,
+        vehicleCapacityUtilization,
+      })
+      return NextResponse.json(orsResult)
+    }
+
+    // Final fallback: Local algorithm
+    console.log("[v0] Using local optimization (Clarke-Wright)...")
+    const localResult = localOptimize(depots, vehicles, customers, {
+      fuelPricePerLiter,
+      maxRouteDistanceKm,
+      maxRouteTimeMin,
+      vehicleCapacityUtilization,
+    })
+    return NextResponse.json(localResult)
+  } catch (error) {
     console.error("Optimizasyon hatası:", error)
     return NextResponse.json(
       {
-        success: false,
-        error: error.message || "Optimizasyon sırasında bir hata oluştu",
+        error: "Optimizasyon sırasında bir hata oluştu",
+        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
     )
