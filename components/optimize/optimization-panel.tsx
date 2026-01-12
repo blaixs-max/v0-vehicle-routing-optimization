@@ -153,67 +153,104 @@ export function OptimizationPanel() {
     fetchData()
   }
 
-  const handleOptimize = async () => {
+  async function handleOptimize() {
     console.log("[v0] Starting optimization")
     console.log("[v0] Algorithm:", algorithm)
     console.log("[v0] Selected depots:", selectedDepots)
     console.log("[v0] Selected customers:", selectedCustomers)
 
     if (selectedDepots.length === 0) {
-      toast.error("Lutfen en az bir depo secin")
+      toast({
+        title: "Hata",
+        description: "Lütfen en az bir depo seçin",
+        variant: "destructive",
+      })
       return
     }
 
-    if (selectedCustomers.length === 0) {
-      toast.error("Lutfen en az bir musteri secin")
-      return
-    }
+    const customersToOptimize = selectedCustomers.length === 0 ? customers.map((c) => c.id) : selectedCustomers
+
+    console.log("[v0] Customers to optimize:", customersToOptimize.length)
 
     // Check missing coordinates
     const missingCoords = customers
-      .filter((c) => selectedCustomers.includes(c.id))
+      .filter((c) => customersToOptimize.includes(c.id))
       .filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
 
     if (missingCoords.length > 0) {
       setMissingCoordinatesCustomers(missingCoords)
       setShowMissingCoordinatesDialog(true)
-      toast.error(`${missingCoords.length} musteri icin koordinat bilgisi eksik`)
+      toast({
+        title: "Koordinat Eksik",
+        description: `${missingCoords.length} müşteri için koordinat bilgisi eksik`,
+        variant: "destructive",
+      })
       return
     }
 
     setOptimizing(true)
     setOptimizeError(null)
+    setProgress(0)
+
+    const progressInterval = setInterval(() => {
+      setProgress((p) => Math.min(p + 10, 90))
+    }, 500)
 
     try {
       const apiEndpoint = "/api/optimize"
       console.log("[v0] Calling API:", apiEndpoint)
+      console.log("[v0] Request body:", {
+        depotsCount: selectedDepots.length,
+        vehiclesCount: vehicles.filter((v) => v.status === "available").length,
+        customersCount: customersToOptimize.length,
+      })
 
       const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          depots: selectedDepots.map((id) => depots.find((d) => d.id === id)),
+          depots: selectedDepots.map((id) => depots.find((d) => d.id === id)).filter(Boolean),
           vehicles: vehicles.filter((v) => v.status === "available"),
-          customers: selectedCustomers.map((id) => customers.find((c) => c.id === id)),
+          customers: customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean),
           options: {
             fuelPrice,
             maxRouteDistance,
             maxRouteDuration,
             useRealDistances,
+            algorithm, // Algoritma parametresini gönder
           },
         }),
       })
 
       clearInterval(progressInterval)
 
+      console.log("[v0] Response status:", response.status)
+
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Optimizasyon basarisiz")
+        const errorText = await response.text()
+        console.error("[v0] API error response:", errorText)
+
+        let errorMessage = "Optimizasyon başarısız"
+        try {
+          const errorData = JSON.parse(errorText)
+          errorMessage = errorData.error || errorData.message || errorMessage
+        } catch {
+          errorMessage = errorText || errorMessage
+        }
+
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
+      console.log("[v0] Optimization result:", data)
+
       setResult(data)
       setProgress(100)
+
+      toast({
+        title: "Başarılı",
+        description: `${data.routes?.length || 0} rota oluşturuldu`,
+      })
 
       // Save optimized routes to localStorage for Map page
       const mockRoutes: MockRoute[] = data.routes.map((route: any, index: number) => {
@@ -301,16 +338,12 @@ export function OptimizationPanel() {
   const totalCapacity = availableVehicles.reduce((sum, v) => sum + v.capacity_pallet, 0)
   const missingCoords = customers.filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
 
-  const progressInterval = setInterval(() => {
-    setProgress((p) => Math.min(p + 10, 90))
-  }, 500)
-
   if (loading) {
     return (
       <Card>
         <CardContent className="p-8 text-center">
           <RefreshCw className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="mt-2 text-muted-foreground">Veriler yukleniyor...</p>
+          <p className="mt-2 text-muted-foreground">Veriler yükleniyor...</p>
         </CardContent>
       </Card>
     )
@@ -322,8 +355,8 @@ export function OptimizationPanel() {
         <Alert className="border-blue-500/50 bg-blue-500/10">
           <Info className="h-4 w-4 text-blue-500" />
           <AlertDescription className="text-blue-600 dark:text-blue-400">
-            Demo modu aktif - Gercek veriler icin Supabase baglantisi yapin. Parametreleri ayarlayin ve "Rotalari
-            Optimize Et" butonuna tiklayin
+            Demo modu aktif - Gerçek veriler için Supabase bağlantısı yapın. Parametreleri ayarlayın ve "Rotaları
+            Optimize Et" butonuna tıklayın
           </AlertDescription>
         </Alert>
       )}
@@ -334,7 +367,7 @@ export function OptimizationPanel() {
           <AlertTriangle className="h-4 w-4 text-amber-500" />
           <AlertDescription className="text-amber-600 dark:text-amber-400 flex items-center justify-between">
             <span>
-              <strong>{missingCoords.length} musteri</strong> icin koordinat bilgisi eksik. Optimizasyon oncesi
+              <strong>{missingCoords.length} müşteri</strong> için koordinat bilgisi eksik. Optimizasyon öncesi
               koordinat girmeniz gerekiyor.
             </span>
             <Button
@@ -347,7 +380,7 @@ export function OptimizationPanel() {
               }}
             >
               <MapPin className="h-4 w-4 mr-2" />
-              Koordinatlari Gir
+              Koordinatları Gir
             </Button>
           </AlertDescription>
         </Alert>
@@ -360,7 +393,7 @@ export function OptimizationPanel() {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Settings className="h-5 w-5" />
-                Optimizasyon Ayarlari
+                Optimizasyon Ayarları
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -396,7 +429,7 @@ export function OptimizationPanel() {
 
               {/* Depot Selection */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Depo Secimi</Label>
+                <Label className="text-sm font-medium">Depo Seçimi</Label>
                 <Select
                   value={selectedDepots.length === depots.length ? "all" : selectedDepots[0]}
                   onValueChange={(v) => {
@@ -405,10 +438,10 @@ export function OptimizationPanel() {
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Depo sec" />
+                    <SelectValue placeholder="Depo seç" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tum Depolar</SelectItem>
+                    <SelectItem value="all">Tüm Depolar</SelectItem>
                     {depots.map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         {d.name || d.city}
@@ -420,7 +453,7 @@ export function OptimizationPanel() {
 
               {/* Customer Selection */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Musteri Secimi</Label>
+                <Label className="text-sm font-medium">Müşteri Seçimi</Label>
                 <Select
                   value={selectedCustomers.length === customers.length ? "all" : selectedCustomers[0]}
                   onValueChange={(v) => {
@@ -429,10 +462,10 @@ export function OptimizationPanel() {
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Musteri sec" />
+                    <SelectValue placeholder="Müşteri seç" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tum Musteriler</SelectItem>
+                    <SelectItem value="all">Tüm Müşteriler</SelectItem>
                     {customers.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}
@@ -476,7 +509,7 @@ export function OptimizationPanel() {
 
               {/* Max Route Duration */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Maks. Rota Suresi (dk): {maxRouteDuration}</Label>
+                <Label className="text-sm font-medium">Maks. Rota Süresi (dk): {maxRouteDuration}</Label>
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
                   <Slider
@@ -495,9 +528,9 @@ export function OptimizationPanel() {
               {/* Geometry Option */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Rota Geometrisi</Label>
-                <p className="text-xs text-muted-foreground">Harita cizimi icin</p>
+                <p className="text-xs text-muted-foreground">Harita çizimi için</p>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm">Gercek yol geometrisi</span>
+                  <span className="text-sm">Gerçek yol geometrisi</span>
                   <Switch checked={useRealDistances} onCheckedChange={setUseRealDistances} />
                 </div>
               </div>
@@ -509,7 +542,7 @@ export function OptimizationPanel() {
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Target className="h-5 w-5" />
-                Optimizasyon Ozeti
+                Optimizasyon Özeti
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -528,9 +561,9 @@ export function OptimizationPanel() {
 
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Truck className="h-4 w-4" /> Musait Araclar
+                  <Truck className="h-4 w-4" /> Musait Araçlar
                 </span>
-                <Badge variant="outline">{availableVehicles.length} arac</Badge>
+                <Badge variant="outline">{availableVehicles.length} araç</Badge>
               </div>
 
               <div className="flex items-center justify-between">
@@ -540,7 +573,7 @@ export function OptimizationPanel() {
                 <Badge variant="outline">
                   {selectedCustomers.length} teslimat
                   {missingCoords.length > 0 && (
-                    <span className="ml-1 text-amber-500">({missingCoords.length} koordinatsiz)</span>
+                    <span className="ml-1 text-amber-500">({missingCoords.length} koordinatsız)</span>
                   )}
                 </Badge>
               </div>
@@ -585,7 +618,7 @@ export function OptimizationPanel() {
             ) : (
               <>
                 <Play className="h-5 w-5 mr-2" />
-                Rotalari Optimize Et
+                Rotaları Optimize Et
               </>
             )}
           </Button>
@@ -611,9 +644,9 @@ export function OptimizationPanel() {
                 <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                   <Route className="h-8 w-8 text-primary" />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Henuz optimizasyon yapilmadi</h3>
+                <h3 className="text-lg font-semibold mb-2">Henüz optimizasyon yapılmadı</h3>
                 <p className="text-muted-foreground max-w-sm">
-                  Sol panelden parametreleri ayarlayin ve "Rotalari Optimize Et" butonuna tiklayin
+                  Sol panelden parametreleri ayarlayın ve "Rotaları Optimize Et" butonuna tıklayın
                 </p>
               </div>
             </Card>

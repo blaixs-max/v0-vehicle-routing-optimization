@@ -6,8 +6,8 @@ import { calculateTollCosts } from "@/lib/toll-costs"
 const ORS_API_KEY = process.env.ORS_API_KEY
 const RAILWAY_API_URL = process.env.RAILWAY_API_URL
 
-console.log("[v0] ORS_API_KEY exists:", !!ORS_API_KEY, "Length:", ORS_API_KEY?.length || 0)
-console.log("[v0] RAILWAY_API_URL exists:", !!RAILWAY_API_URL)
+console.log("[v0] ORS_API_KEY exists:", !!ORS_API_KEY)
+console.log("[v0] RAILWAY_API_URL:", RAILWAY_API_URL)
 
 // Haversine mesafe hesaplama (fallback için)
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -341,376 +341,205 @@ async function optimizeWithORS(
   }
 }
 
-async function optimizeWithORTools(
-  depots: Depot[],
-  vehicles: Vehicle[],
-  customers: Customer[],
-  options: {
-    fuelPricePerLiter: number
-    maxRouteDistanceKm?: number
-    maxRouteTimeMin?: number
-    vehicleCapacityUtilization?: number
-  },
-) {
-  console.log("[v0] OR-Tools: Starting optimization")
-  console.log("[v0] OR-Tools: RAILWAY_API_URL =", RAILWAY_API_URL)
-  console.log("[v0] OR-Tools: Customers =", customers.length)
-  console.log("[v0] OR-Tools: Vehicles =", vehicles.length)
-
-  if (!RAILWAY_API_URL) {
-    console.log("[v0] OR-Tools: RAILWAY_API_URL not configured, skipping")
-    throw new Error("Railway API URL not configured")
-  }
+async function optimizeWithRailway(depots: Depot[], vehicles: Vehicle[], customers: Customer[], options: any) {
+  console.log("[v0] === Railway OR-Tools Optimization ===")
+  console.log("[v0] Railway URL:", RAILWAY_API_URL)
+  console.log("[v0] Request data:", {
+    depots: depots.length,
+    vehicles: vehicles.length,
+    customers: customers.length,
+  })
 
   const validCustomers = customers.filter((c) => {
     const hasValidCoords = c.lat && c.lng && c.lat !== 0 && c.lng !== 0
     if (!hasValidCoords) {
-      console.warn(`[v0] Customer ${c.id} has invalid coordinates, skipping`)
+      console.warn(`[v0] Invalid coordinates for customer ${c.id}: lat=${c.lat}, lng=${c.lng}`)
     }
     return hasValidCoords
   })
 
   if (validCustomers.length === 0) {
-    throw new Error("No customers with valid coordinates")
+    throw new Error("Geçerli koordinatlara sahip müşteri bulunamadı")
   }
 
-  // Railway formatına çevir
-  const railwayCustomers = validCustomers.map((c) => ({
-    id: c.id,
-    name: c.name,
-    location: {
-      lat: c.lat,
-      lng: c.lng,
+  console.log("[v0] Valid customers:", validCustomers.length, "/ Total:", customers.length)
+
+  const requestBody = {
+    depots: depots.map((d) => ({
+      id: d.id,
+      name: d.name,
+      location: { lat: d.lat, lng: d.lng },
+    })),
+    vehicles: vehicles
+      .filter((v) => v.status === "active" || v.status === "available" || !v.status)
+      .map((v) => ({
+        id: v.id,
+        capacity: v.capacity_pallet || v.capacity_pallets || 12,
+        depot_id: v.depot_id || depots[0]?.id,
+        fuel_consumption: v.fuel_consumption_per_100km || 25,
+        cost_per_km: v.cost_per_km || 2,
+        fixed_cost: v.fixed_daily_cost || 500,
+        vehicle_type: v.vehicle_type || "truck",
+      })),
+    customers: validCustomers.map((c) => ({
+      id: c.id,
+      name: c.name,
+      location: { lat: c.lat, lng: c.lng },
+      demand: c.demand_pallet || c.demand_pallets || 1,
+      service_time: c.service_time || 15,
+      time_window: c.time_window,
+      allowed_vehicle_types: c.allowed_vehicle_types,
+    })),
+    options: {
+      fuel_price: options?.fuelPrice || 47.5,
+      max_route_distance: options?.maxRouteDistance,
+      max_route_duration: options?.maxRouteDuration,
     },
-    demand: c.demand_pallet || c.demand_pallets || 0,
-    business: c.business_type || "default",
-    time_constraint: c.time_window_end ? `${c.time_window_end} den önce verilemiyor` : "HAYIR",
-    required_vehicle_types: c.required_vehicle_types || [],
-  }))
-
-  const railwayVehicles = vehicles.map((v) => ({
-    id: v.id,
-    type: v.vehicle_type === "kamyonet" ? 1 : v.vehicle_type === "kamyon" ? 3 : v.vehicle_type === "tir" ? 4 : 3,
-    capacity: v.capacity_pallet || 0,
-    fuel_consumption: v.fuel_consumption_per_100km || 25,
-  }))
-
-  const railwayDepot = {
-    id: depots[0].id,
-    name: depots[0].name,
-    location: {
-      lat: depots[0].lat || 0,
-      lng: depots[0].lng || 0,
-    },
   }
 
-  console.log("[v0] OR-Tools: Sending request to Railway...")
-  console.log(
-    "[v0] OR-Tools: Request body:",
-    JSON.stringify({
-      customers: railwayCustomers.length,
-      vehicles: railwayVehicles.length,
-      depot: railwayDepot.id,
-    }),
-  )
+  console.log("[v0] Calling Railway API...")
 
-  const response = await fetch(`${RAILWAY_API_URL}/optimize`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      customers: railwayCustomers,
-      vehicles: railwayVehicles,
-      depot: railwayDepot,
-      fuel_price: options.fuelPricePerLiter,
-    }),
-  }).catch((err) => {
-    console.error("[v0] OR-Tools: Fetch failed:", err.message)
-    throw new Error(`Railway API connection failed: ${err.message}`)
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000) // 60 saniye timeout
 
-  console.log("[v0] OR-Tools: Response status:", response.status)
+  try {
+    const response = await fetch(`${RAILWAY_API_URL}/optimize`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error("[v0] OR-Tools: Error response:", errorText)
-    throw new Error(`OR-Tools optimization failed: ${response.status} ${errorText}`)
-  }
+    clearTimeout(timeout)
 
-  const result = await response.json()
-  console.log("[v0] OR-Tools: Success! Routes:", result.routes?.length || 0)
+    console.log("[v0] Railway response status:", response.status)
 
-  return result
-}
-
-// Yerel Nearest Neighbor optimizer (fallback)
-function localOptimize(
-  depots: Depot[],
-  vehicles: Vehicle[],
-  customers: Customer[],
-  options: {
-    fuelPricePerLiter: number
-    maxRouteDistanceKm?: number
-    maxRouteTimeMin?: number
-    vehicleCapacityUtilization?: number
-  },
-) {
-  const startTime = Date.now()
-
-  const availableVehicles = vehicles.filter((v) => v.status === "active" || v.status === "available" || !v.status)
-
-  if (availableVehicles.length === 0) {
-    throw new Error("Kullanılabilir araç bulunamadı")
-  }
-
-  const depotCustomers = new Map<string, Customer[]>()
-  for (const depot of depots) {
-    depotCustomers.set(depot.id, [])
-  }
-
-  for (const customer of customers) {
-    if (customer.assigned_depot_id && depotCustomers.has(customer.assigned_depot_id)) {
-      depotCustomers.get(customer.assigned_depot_id)!.push(customer)
-    } else {
-      let minDist = Number.POSITIVE_INFINITY
-      let closestDepot = depots[0]
-      for (const depot of depots) {
-        const dist = haversineDistance(customer.lat, customer.lng, depot.lat, depot.lng)
-        if (dist < minDist) {
-          minDist = dist
-          closestDepot = depot
-        }
-      }
-      depotCustomers.get(closestDepot.id)!.push(customer)
-    }
-  }
-
-  const routes: any[] = []
-  const unassigned: string[] = []
-
-  for (const depot of depots) {
-    let depotVehicles = availableVehicles.filter((v) => v.depot_id === depot.id)
-    if (depotVehicles.length === 0) {
-      depotVehicles = availableVehicles.slice(0, 3)
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("[v0] Railway API error response:", errorText)
+      throw new Error(`Railway API error (${response.status}): ${errorText}`)
     }
 
-    const depotCusts = depotCustomers.get(depot.id) || []
-    if (depotCusts.length === 0) continue
+    const railwayData = await response.json()
+    console.log("[v0] Railway response success:", {
+      routes: railwayData.routes?.length,
+      hasData: !!railwayData,
+    })
 
-    const remainingCustomers = [...depotCusts]
-    let vehicleIndex = 0
+    if (railwayData.routes && ORS_API_KEY) {
+      const client = new ORSClient(ORS_API_KEY)
 
-    while (remainingCustomers.length > 0 && vehicleIndex < depotVehicles.length) {
-      const vehicle = depotVehicles[vehicleIndex]
-      const capacityLimit = Math.floor(
-        (vehicle.capacity_pallet || vehicle.capacity_pallets || 12) * (options.vehicleCapacityUtilization || 0.9),
-      )
+      for (const route of railwayData.routes) {
+        if (!route.stops || route.stops.length === 0) continue
 
-      const routeStops: any[] = []
-      let currentLat = depot.lat
-      let currentLng = depot.lng
-      let currentLoad = 0
-      let totalDistance = 0
-      let stopOrder = 0
-
-      while (remainingCustomers.length > 0) {
-        let nearestIdx = -1
-        let nearestDist = Number.POSITIVE_INFINITY
-
-        for (let i = 0; i < remainingCustomers.length; i++) {
-          const cust = remainingCustomers[i]
-          const demand = cust.demand_pallets || cust.demand_pallet || 1
-          if (currentLoad + demand > capacityLimit) continue
-          const dist = haversineDistance(currentLat, currentLng, cust.lat, cust.lng)
-          if (dist < nearestDist) {
-            nearestDist = dist
-            nearestIdx = i
-          }
-        }
-
-        if (nearestIdx === -1) break
-
-        const customer = remainingCustomers[nearestIdx]
-        const demand = customer.demand_pallets || customer.demand_pallet || 1
-        const distanceToCustomer = nearestDist
-        const distanceBackToDepot = haversineDistance(customer.lat, customer.lng, depot.lat, depot.lng)
-
-        if (
-          options.maxRouteDistanceKm &&
-          totalDistance + distanceToCustomer + distanceBackToDepot > options.maxRouteDistanceKm
-        ) {
-          break
-        }
-
-        stopOrder++
-        currentLoad += demand
-        totalDistance += distanceToCustomer
-
-        routeStops.push({
-          customerId: customer.id,
-          customerName: customer.name,
-          address: customer.address,
-          lat: customer.lat,
-          lng: customer.lng,
-          stopOrder,
-          arrivalTime: Math.round((totalDistance / 50) * 60),
-          serviceTime: 15,
-          distanceFromPrev: Math.round(distanceToCustomer * 100) / 100,
-          demand,
-          cumulativeLoad: currentLoad,
-        })
-
-        currentLat = customer.lat
-        currentLng = customer.lng
-        remainingCustomers.splice(nearestIdx, 1)
-      }
-
-      if (routeStops.length > 0) {
-        const returnDistance = haversineDistance(currentLat, currentLng, depot.lat, depot.lng)
-        totalDistance += returnDistance
-        const distanceSource = "local" // Debug için kaynak takibi
+        // Rota noktaları: depot -> stops -> depot
+        const depot = depots.find((d) => d.id === route.depotId)
+        if (!depot) continue
 
         const routePoints = [
           { lat: depot.lat, lng: depot.lng },
-          ...routeStops.map((s) => ({ lat: s.lat, lng: s.lng })),
+          ...route.stops.map((s: any) => ({ lat: s.lat, lng: s.lng })),
           { lat: depot.lat, lng: depot.lng },
         ]
-        const vehicleType = vehicle.vehicle_type || "truck"
 
-        const tollCalculation = calculateTollCosts(routePoints, vehicleType, totalDistance)
+        try {
+          // ORS Directions API ile gerçek yol geometrisi al
+          const geometryPoints = await client.getRouteGeometry(routePoints, "driving-hgv")
+          route.geometryPoints = geometryPoints
 
-        const fuelConsumption = (totalDistance / 100) * (vehicle.fuel_consumption_per_100km || 20)
-        const fuelCost = fuelConsumption * options.fuelPricePerLiter
-        const distanceCost = totalDistance * (vehicle.cost_per_km || 2)
-        const fixedCost = vehicle.fixed_daily_cost || 500
-        const tollCost = tollCalculation.totalTollCost
-        const totalCost = fuelCost + distanceCost + fixedCost + tollCost
-        const vehicleCapacity = vehicle.capacity_pallet || vehicle.capacity_pallets || 12
+          // Köprü/otoyol maliyet hesaplama
+          const vehicleType = route.vehicleType || "truck"
+          const tollCalculation = calculateTollCosts(geometryPoints, vehicleType, route.totalDistance || 0)
 
-        routes.push({
-          vehicleId: vehicle.id,
-          vehiclePlate: vehicle.plate,
-          vehicleType: vehicle.vehicle_type,
-          depotId: depot.id,
-          depotName: depot.name,
-          stops: routeStops,
-          totalDistance: Math.round(totalDistance * 100) / 100,
-          totalDuration: Math.round((totalDistance / 50) * 60 + routeStops.length * 15),
-          totalCost: Math.round(totalCost * 100) / 100,
-          fuelCost: Math.round(fuelCost * 100) / 100,
-          fixedCost: Math.round(fixedCost * 100) / 100,
-          distanceCost: Math.round(distanceCost * 100) / 100,
-          tollCost: Math.round(tollCost * 100) / 100,
-          tollCrossings: tollCalculation.crossings,
-          highwayUsage: tollCalculation.highwayUsage,
-          totalLoad: currentLoad,
-          capacityUtilization: Math.round((currentLoad / vehicleCapacity) * 100),
-          geometry: null,
-        })
+          route.tollCost = tollCalculation.totalTollCost
+          route.tollCrossings = tollCalculation.crossings
+          route.highwayUsage = tollCalculation.highwayUsage
+
+          // Toplam maliyeti güncelle
+          route.totalCost = (route.fuelCost || 0) + (route.fixedCost || 0) + (route.distanceCost || 0) + route.tollCost
+        } catch (geoError) {
+          console.error("[v0] Failed to get geometry for route:", route.vehicleId, geoError)
+          // Geometri alınamazsa basit polyline kullan
+          route.geometryPoints = routePoints
+        }
       }
-
-      vehicleIndex++
     }
 
-    for (const cust of remainingCustomers) {
-      unassigned.push(cust.id)
+    return {
+      success: true,
+      provider: "ortools-railway",
+      summary: railwayData.summary || {},
+      routes: railwayData.routes || [],
+      unassigned: railwayData.unassigned || [],
     }
-  }
+  } catch (fetchError) {
+    clearTimeout(timeout)
+    console.error("[v0] Railway fetch error:", fetchError)
 
-  const computationTime = Date.now() - startTime
-  const totalDistance = routes.reduce((sum, r) => sum + (r.totalDistance || 0), 0)
-  const totalDuration = routes.reduce((sum, r) => sum + (r.totalDuration || 0), 0)
-  const totalFuelCost = routes.reduce((sum, r) => sum + (r.fuelCost || 0), 0)
-  const totalFixedCost = routes.reduce((sum, r) => sum + (r.fixedCost || 0), 0)
-  const totalDistanceCost = routes.reduce((sum, r) => sum + (r.distanceCost || 0), 0)
-  const totalTollCost = routes.reduce((sum, r) => sum + (r.tollCost || 0), 0)
-  const totalCost = totalFuelCost + totalFixedCost + totalDistanceCost + totalTollCost
-  const avgCapacityUtilization =
-    routes.length > 0 ? routes.reduce((sum, r) => sum + (r.capacityUtilization || 0), 0) / routes.length : 0
+    if (fetchError instanceof Error && fetchError.name === "AbortError") {
+      throw new Error("Railway API timeout (60 saniye)")
+    }
 
-  return {
-    success: true,
-    provider: "local",
-    summary: {
-      totalRoutes: routes.length,
-      totalDistance: Math.round(totalDistance * 100) / 100,
-      totalDuration: Math.round(totalDuration),
-      totalCost: Math.round(totalCost * 100) / 100,
-      fuelCost: Math.round(totalFuelCost * 100) / 100,
-      fixedCost: Math.round(totalFixedCost * 100) / 100,
-      distanceCost: Math.round(totalDistanceCost * 100) / 100,
-      tollCost: Math.round(totalTollCost * 100) / 100,
-      unassignedCount: unassigned.length,
-      computationTimeMs: computationTime,
-      avgCapacityUtilization: Math.round(avgCapacityUtilization),
-    },
-    routes,
-    unassigned: [...new Set(unassigned)],
+    throw new Error(
+      `Railway API connection failed: ${fetchError instanceof Error ? fetchError.message : "Unknown error"}`,
+    )
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const body = await request.json()
+    const body = await req.json()
     const { depots, vehicles, customers, options = {} } = body
 
-    if (!depots || !Array.isArray(depots) || depots.length === 0) {
-      return NextResponse.json({ error: "En az bir depo gerekli" }, { status: 400 })
+    console.log("[v0] === POST /api/optimize ===")
+    console.log("[v0] Depots:", depots?.length)
+    console.log("[v0] Vehicles:", vehicles?.length)
+    console.log("[v0] Customers:", customers?.length)
+    console.log("[v0] Algorithm:", options?.algorithm)
+
+    if (!depots || depots.length === 0) {
+      return NextResponse.json({ error: "En az bir depo gereklidir" }, { status: 400 })
     }
 
-    if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
-      return NextResponse.json({ error: "En az bir araç gerekli" }, { status: 400 })
+    if (!vehicles || vehicles.length === 0) {
+      return NextResponse.json({ error: "En az bir araç gereklidir" }, { status: 400 })
     }
 
-    if (!customers || !Array.isArray(customers) || customers.length === 0) {
-      return NextResponse.json({ error: "En az bir müşteri gerekli" }, { status: 400 })
+    if (!customers || customers.length === 0) {
+      return NextResponse.json({ error: "En az bir müşteri gereklidir" }, { status: 400 })
     }
 
-    const optimizationOptions = {
-      fuelPricePerLiter: options.fuelPrice || 47.5,
-      maxRouteDistanceKm: options.maxRouteDistance || undefined,
-      maxRouteTimeMin: options.maxRouteDuration || 600,
-      vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.85,
-    }
-
-    let result
-    let provider = "unknown"
-
-    // OR-Tools öncelikli
-    if (RAILWAY_API_URL) {
-      try {
-        console.log("[v0] Trying OR-Tools via Railway...")
-        result = await optimizeWithORTools(depots, vehicles, customers, optimizationOptions)
-        provider = "ortools"
-      } catch (error) {
-        console.error("[v0] OR-Tools failed:", error)
-        // ORS fallback
-        if (ORS_API_KEY) {
-          console.log("[v0] Falling back to ORS...")
-          result = await optimizeWithORS(depots, vehicles, customers, optimizationOptions)
-          provider = "openrouteservice"
-        } else {
-          throw error
-        }
-      }
-    } else if (ORS_API_KEY) {
-      console.log("[v0] Using ORS (no Railway URL)...")
-      result = await optimizeWithORS(depots, vehicles, customers, optimizationOptions)
-      provider = "openrouteservice"
-    } else {
+    if (!RAILWAY_API_URL) {
       return NextResponse.json(
         {
-          error: "No optimization service available. Set RAILWAY_API_URL or ORS_API_KEY",
+          error: "OR-Tools servisi yapılandırılmamış",
+          details: "RAILWAY_API_URL environment variable tanımlı değil",
         },
-        { status: 500 },
+        { status: 503 },
       )
     }
 
-    return NextResponse.json({
-      ...result,
-      provider,
-    })
+    console.log("[v0] Using OR-Tools (Railway) for optimization...")
+
+    const result = await optimizeWithRailway(depots, vehicles, customers, options)
+
+    console.log("[v0] Optimization completed successfully")
+    console.log("[v0] Summary:", result.summary)
+
+    return NextResponse.json(result)
   } catch (error) {
-    console.error("[v0] Optimization error:", error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Optimizasyon hatası" }, { status: 500 })
+    console.error("[v0] === Optimization Error ===")
+    console.error("[v0]", error)
+
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Bilinmeyen hata",
+        details: error instanceof Error ? error.stack : undefined,
+      },
+      { status: 500 },
+    )
   }
 }
