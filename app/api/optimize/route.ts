@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import type { Depot, Vehicle, Customer } from "@/lib/types"
-import { ORSClient } from "@/lib/ors/client"
-import { calculateTollCosts } from "@/lib/toll-costs"
+import { ORSClient } from "@/lib/ors-client"
+import { decodePolyline } from "@/lib/polyline"
+import { calculateTollCosts } from "@/lib/toll-calculator"
 
 const ORS_API_KEY = process.env.ORS_API_KEY
 const RAILWAY_API_URL = process.env.RAILWAY_API_URL
@@ -19,47 +20,6 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return R * c
-}
-
-function decodePolyline(encoded: string): { lat: number; lng: number }[] {
-  const points: { lat: number; lng: number }[] = []
-  let index = 0
-  let lat = 0
-  let lng = 0
-
-  while (index < encoded.length) {
-    let shift = 0
-    let result = 0
-    let byte: number
-
-    do {
-      byte = encoded.charCodeAt(index++) - 63
-      result |= (byte & 0x1f) << shift
-      shift += 5
-    } while (byte >= 0x20)
-
-    const dlat = result & 1 ? ~(result >> 1) : result >> 1
-    lat += dlat
-
-    shift = 0
-    result = 0
-
-    do {
-      byte = encoded.charCodeAt(index++) - 63
-      result |= (byte & 0x1f) << shift
-      shift += 5
-    } while (byte >= 0x20)
-
-    const dlng = result & 1 ? ~(result >> 1) : result >> 1
-    lng += dlng
-
-    points.push({
-      lat: lat / 1e5,
-      lng: lng / 1e5,
-    })
-  }
-
-  return points
 }
 
 // ORS Optimization API ile rota optimizasyonu
@@ -341,16 +301,21 @@ async function optimizeWithORS(
   }
 }
 
-async function optimizeWithRailway(depots: Depot[], vehicles: Vehicle[], customers: Customer[], options: any) {
+async function optimizeWithRailway(
+  selectedDepots: Depot[],
+  selectedVehicles: Vehicle[],
+  selectedCustomers: Customer[],
+  options: any,
+) {
   console.log("[v0] === Railway OR-Tools Optimization ===")
   console.log("[v0] Railway URL:", RAILWAY_API_URL)
   console.log("[v0] Request data:", {
-    depots: depots.length,
-    vehicles: vehicles.length,
-    customers: customers.length,
+    depots: selectedDepots.length,
+    vehicles: selectedVehicles.length,
+    customers: selectedCustomers.length,
   })
 
-  const validCustomers = customers.filter((c) => {
+  const validCustomers = selectedCustomers.filter((c) => {
     const hasValidCoords = c.lat && c.lng && c.lat !== 0 && c.lng !== 0
     if (!hasValidCoords) {
       console.warn(`[v0] Invalid coordinates for customer ${c.id}: lat=${c.lat}, lng=${c.lng}`)
@@ -362,121 +327,139 @@ async function optimizeWithRailway(depots: Depot[], vehicles: Vehicle[], custome
     throw new Error("Geçerli koordinatlara sahip müşteri bulunamadı")
   }
 
-  console.log("[v0] Valid customers:", validCustomers.length, "/ Total:", customers.length)
+  console.log("[v0] Valid customers:", validCustomers.length, "/ Total:", selectedCustomers.length)
 
-  const requestBody = {
-    depots: depots.map((d) => ({
-      id: d.id,
-      name: d.name,
-      location: { lat: d.lat, lng: d.lng },
-    })),
-    vehicles: vehicles
-      .filter((v) => v.status === "active" || v.status === "available" || !v.status)
-      .map((v) => ({
-        id: v.id,
-        capacity: v.capacity_pallet || v.capacity_pallets || 12,
-        depot_id: v.depot_id || depots[0]?.id,
-        fuel_consumption: v.fuel_consumption_per_100km || 25,
-        cost_per_km: v.cost_per_km || 2,
-        fixed_cost: v.fixed_daily_cost || 500,
-        vehicle_type: v.vehicle_type || "truck",
-      })),
-    customers: validCustomers.map((c) => ({
-      id: c.id,
-      name: c.name,
-      location: { lat: c.lat, lng: c.lng },
-      demand: c.demand_pallet || c.demand_pallets || 1,
-      service_time: c.service_time || 15,
-      time_window: c.time_window,
-      allowed_vehicle_types: c.allowed_vehicle_types,
-    })),
-    options: {
-      fuel_price: options?.fuelPrice || 47.5,
-      max_route_distance: options?.maxRouteDistance,
-      max_route_duration: options?.maxRouteDuration,
-    },
+  const customersToOptimize = validCustomers.filter((c) => options.customersToOptimize.includes(c.id))
+
+  // Business type mapping
+  const getBusinessType = (customer: any): string => {
+    const business = customer.business_type || customer.business || ""
+    if (business.toUpperCase().includes("MCD") || business.toUpperCase().includes("MCDONALD")) return "MCD"
+    if (business.toUpperCase().includes("IKEA")) return "IKEA"
+    if (business.toUpperCase().includes("CHOCO") || business.toUpperCase().includes("CHL")) return "CHL"
+    if (business.toUpperCase().includes("OPET") || business.toUpperCase().includes("OPT")) return "OPT"
+    return "OTHER"
   }
 
-  console.log("[v0] Calling Railway API...")
+  // Service duration mapping (minutes)
+  const getServiceDuration = (businessType: string): number => {
+    switch (businessType) {
+      case "MCD":
+        return 60
+      case "IKEA":
+        return 45
+      case "CHL":
+        return 30
+      case "OPT":
+        return 30
+      default:
+        return 30
+    }
+  }
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 60000) // 60 saniye timeout
+  // Railway API request format
+  const railwayRequest = {
+    customers: customersToOptimize.map((c: any) => ({
+      id: c.id,
+      name: c.name,
+      location: {
+        lat: c.lat,
+        lng: c.lng,
+      },
+      demand_pallets: c.demand_pallet || c.demand_pallets || c.demand || 1,
+      business_type: getBusinessType(c),
+      service_duration: getServiceDuration(getBusinessType(c)),
+      time_constraints: c.special_constraint || c.time_constraints || null,
+      required_vehicle_types: c.required_vehicle_type ? [c.required_vehicle_type] : null,
+    })),
+    vehicles: selectedVehicles.map((v: any) => ({
+      id: v.id,
+      type: v.vehicle_type || 1,
+      capacity_pallets: v.capacity_pallet || v.capacity_pallets || 10,
+      fuel_consumption: v.fuel_consumption_per_100km || 25,
+    })),
+    depot: {
+      id: selectedDepots[0].id,
+      location: {
+        lat: selectedDepots[0].lat,
+        lng: selectedDepots[0].lng,
+      },
+    },
+    fuel_price: options?.fuelPricePerLiter || 47.5,
+  }
+
+  console.log("[v0] Calling Railway API:", `${RAILWAY_API_URL}/optimize`)
+  console.log("[v0] Request payload:", JSON.stringify(railwayRequest, null, 2))
 
   try {
-    const response = await fetch(`${RAILWAY_API_URL}/optimize`, {
+    const railwayResponse = await fetch(`${RAILWAY_API_URL}/optimize`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Accept: "application/json",
       },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
+      body: JSON.stringify(railwayRequest),
+      signal: AbortSignal.timeout(60000),
     })
 
-    clearTimeout(timeout)
+    console.log("[v0] Railway response status:", railwayResponse.status)
 
-    console.log("[v0] Railway response status:", response.status)
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error("[v0] Railway API error response:", errorText)
-      throw new Error(`Railway API error (${response.status}): ${errorText}`)
+    if (!railwayResponse.ok) {
+      const errorText = await railwayResponse.text()
+      console.error("[v0] Railway API error:", errorText)
+      return NextResponse.json(
+        { error: `Railway API error (${railwayResponse.status}): ${errorText}` },
+        { status: 500 },
+      )
     }
 
-    const railwayData = await response.json()
-    console.log("[v0] Railway response success:", {
-      routes: railwayData.routes?.length,
-      hasData: !!railwayData,
-    })
+    const railwayResult = await railwayResponse.json()
+    console.log("[v0] Railway optimization successful")
+    console.log("[v0] Routes found:", railwayResult.routes?.length)
 
-    if (railwayData.routes && ORS_API_KEY) {
-      const client = new ORSClient(ORS_API_KEY)
+    // Geometry and cost calculation for each route
+    const client = new ORSClient(ORS_API_KEY!)
+    for (const route of railwayResult.routes) {
+      if (!route.stops || route.stops.length === 0) continue
 
-      for (const route of railwayData.routes) {
-        if (!route.stops || route.stops.length === 0) continue
+      // Rota noktaları: depot -> stops -> depot
+      const depot = selectedDepots.find((d) => d.id === route.depotId)
+      if (!depot) continue
 
-        // Rota noktaları: depot -> stops -> depot
-        const depot = depots.find((d) => d.id === route.depotId)
-        if (!depot) continue
+      const routePoints = [
+        { lat: depot.lat, lng: depot.lng },
+        ...route.stops.map((s: any) => ({ lat: s.lat, lng: s.lng })),
+        { lat: depot.lat, lng: depot.lng },
+      ]
 
-        const routePoints = [
-          { lat: depot.lat, lng: depot.lng },
-          ...route.stops.map((s: any) => ({ lat: s.lat, lng: s.lng })),
-          { lat: depot.lat, lng: depot.lng },
-        ]
+      try {
+        // ORS Directions API ile gerçek yol geometrisi al
+        const geometryPoints = await client.getRouteGeometry(routePoints, "driving-hgv")
+        route.geometryPoints = geometryPoints
 
-        try {
-          // ORS Directions API ile gerçek yol geometrisi al
-          const geometryPoints = await client.getRouteGeometry(routePoints, "driving-hgv")
-          route.geometryPoints = geometryPoints
+        // Köprü/otoyol maliyet hesaplama
+        const vehicleType = route.vehicleType || "truck"
+        const tollCalculation = calculateTollCosts(geometryPoints, vehicleType, route.totalDistance || 0)
 
-          // Köprü/otoyol maliyet hesaplama
-          const vehicleType = route.vehicleType || "truck"
-          const tollCalculation = calculateTollCosts(geometryPoints, vehicleType, route.totalDistance || 0)
+        route.tollCost = tollCalculation.totalTollCost
+        route.tollCrossings = tollCalculation.crossings
+        route.highwayUsage = tollCalculation.highwayUsage
 
-          route.tollCost = tollCalculation.totalTollCost
-          route.tollCrossings = tollCalculation.crossings
-          route.highwayUsage = tollCalculation.highwayUsage
-
-          // Toplam maliyeti güncelle
-          route.totalCost = (route.fuelCost || 0) + (route.fixedCost || 0) + (route.distanceCost || 0) + route.tollCost
-        } catch (geoError) {
-          console.error("[v0] Failed to get geometry for route:", route.vehicleId, geoError)
-          // Geometri alınamazsa basit polyline kullan
-          route.geometryPoints = routePoints
-        }
+        // Toplam maliyeti güncelle
+        route.totalCost = (route.fuelCost || 0) + (route.fixedCost || 0) + (route.distanceCost || 0) + route.tollCost
+      } catch (geoError) {
+        console.error("[v0] Failed to get geometry for route:", route.vehicleId, geoError)
+        // Geometri alınamazsa basit polyline kullan
+        route.geometryPoints = routePoints
       }
     }
 
-    return {
+    return NextResponse.json({
       success: true,
-      provider: "ortools-railway",
-      summary: railwayData.summary || {},
-      routes: railwayData.routes || [],
-      unassigned: railwayData.unassigned || [],
-    }
-  } catch (fetchError) {
-    clearTimeout(timeout)
+      routes: railwayResult.routes,
+      summary: railwayResult.summary,
+      algorithm: "ortools",
+    })
+  } catch (fetchError: any) {
     console.error("[v0] Railway fetch error:", fetchError)
 
     if (fetchError instanceof Error && fetchError.name === "AbortError") {
@@ -489,26 +472,26 @@ async function optimizeWithRailway(depots: Depot[], vehicles: Vehicle[], custome
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json()
-    const { depots, vehicles, customers, options = {} } = body
+    const body = await request.json()
+    const { selectedDepots, selectedCustomers, selectedVehicles, algorithm = "ortools", options } = body
 
     console.log("[v0] === POST /api/optimize ===")
-    console.log("[v0] Depots:", depots?.length)
-    console.log("[v0] Vehicles:", vehicles?.length)
-    console.log("[v0] Customers:", customers?.length)
-    console.log("[v0] Algorithm:", options?.algorithm)
+    console.log("[v0] Algorithm:", algorithm)
+    console.log("[v0] Selected depots:", selectedDepots?.length)
+    console.log("[v0] Selected customers:", selectedCustomers?.length)
+    console.log("[v0] Customers to optimize:", options?.customersToOptimize)
 
-    if (!depots || depots.length === 0) {
+    if (!selectedDepots || selectedDepots.length === 0) {
       return NextResponse.json({ error: "En az bir depo gereklidir" }, { status: 400 })
     }
 
-    if (!vehicles || vehicles.length === 0) {
+    if (!selectedVehicles || selectedVehicles.length === 0) {
       return NextResponse.json({ error: "En az bir araç gereklidir" }, { status: 400 })
     }
 
-    if (!customers || customers.length === 0) {
+    if (!selectedCustomers || selectedCustomers.length === 0) {
       return NextResponse.json({ error: "En az bir müşteri gereklidir" }, { status: 400 })
     }
 
@@ -522,22 +505,29 @@ export async function POST(req: Request) {
       )
     }
 
-    console.log("[v0] Using OR-Tools (Railway) for optimization...")
+    console.log("[v0] Starting optimization")
 
-    const result = await optimizeWithRailway(depots, vehicles, customers, options)
+    let result
+    if (algorithm === "ors") {
+      result = await optimizeWithORS(selectedDepots, selectedVehicles, selectedCustomers, options)
+    } else if (algorithm === "ortools") {
+      result = await optimizeWithRailway(selectedDepots, selectedVehicles, selectedCustomers, options)
+    } else {
+      return NextResponse.json({ error: "Desteklenmeyen optimizasyon algoritması" }, { status: 400 })
+    }
 
     console.log("[v0] Optimization completed successfully")
     console.log("[v0] Summary:", result.summary)
 
     return NextResponse.json(result)
-  } catch (error) {
+  } catch (error: any) {
     console.error("[v0] === Optimization Error ===")
     console.error("[v0]", error)
 
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Bilinmeyen hata",
-        details: error instanceof Error ? error.stack : undefined,
+        error: error.message || "Bilinmeyen hata",
+        details: error.stack || undefined,
       },
       { status: 500 },
     )
