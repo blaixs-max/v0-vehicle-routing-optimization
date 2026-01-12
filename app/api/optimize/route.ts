@@ -350,155 +350,64 @@ async function optimizeWithORTools(
     fuelPricePerLiter: number
     maxRouteDistanceKm?: number
     maxRouteTimeMin?: number
-    vehicleCapacityUtilization?: number
   },
 ) {
   if (!RAILWAY_API_URL) {
-    throw new Error("RAILWAY_API_URL environment variable bulunamadı")
+    throw new Error("RAILWAY_API_URL environment variable is not set")
   }
 
-  const startTime = Date.now()
+  console.log("[v0] Calling Railway OR-Tools API...")
 
-  // Railway API formatına dönüştür
-  const payload = {
-    depots: depots.map((d) => ({
-      id: d.id,
-      name: d.name,
-      lat: d.lat,
-      lng: d.lng,
-    })),
-    vehicles: vehicles.map((v) => ({
-      id: v.id,
-      plate: v.plate,
-      depot_id: v.depot_id,
-      vehicle_type: v.vehicle_type,
-      capacity_pallet: v.capacity_pallet || v.capacity_pallets || 12,
-      fuel_consumption_per_100km: v.fuel_consumption_per_100km || 25,
-      cost_per_km: v.cost_per_km || 0,
-      fixed_daily_cost: v.fixed_daily_cost || 0,
-      driver_max_work_hours: v.driver_max_work_hours || 9,
-      driver_break_duration: v.driver_break_duration || 45,
-    })),
-    customers: customers.map((c) => ({
-      id: c.id,
-      name: c.name,
-      lat: c.lat,
-      lng: c.lng,
-      assigned_depot_id: c.assigned_depot_id,
-      demand_pallet: c.demand_pallet || c.demand_pallets || 1,
-      service_duration: c.service_duration || 15,
-      business: c.business || "DEFAULT",
-      time_window_start: c.time_window_start,
-      time_window_end: c.time_window_end,
-      required_vehicle_types: c.required_vehicle_types || [],
-      special_constraints: c.special_constraints,
-    })),
-    options: {
-      fuel_price_per_liter: options.fuelPricePerLiter,
-      max_route_distance_km: options.maxRouteDistanceKm,
-      max_route_time_min: options.maxRouteTimeMin,
-      vehicle_capacity_utilization: options.vehicleCapacityUtilization || 0.8,
+  // Railway formatına çevir
+  const railwayCustomers = customers.map((c) => ({
+    id: c.id,
+    name: c.name,
+    location: {
+      lat: c.lat || 0,
+      lng: c.lng || 0,
+    },
+    demand: c.demand_pallet || c.demand_pallets || 0,
+    business: c.business_type || "default",
+    time_constraint: c.time_window_end ? `${c.time_window_end} den önce verilemiyor` : "HAYIR",
+    required_vehicle_types: c.required_vehicle_types || [],
+  }))
+
+  const railwayVehicles = vehicles.map((v) => ({
+    id: v.id,
+    type: v.vehicle_type === "kamyonet" ? 1 : v.vehicle_type === "kamyon" ? 3 : v.vehicle_type === "tir" ? 4 : 3,
+    capacity: v.capacity_pallet || 0,
+    fuel_consumption: v.fuel_consumption_per_100km || 25,
+  }))
+
+  const railwayDepot = {
+    id: depots[0].id,
+    name: depots[0].name,
+    location: {
+      lat: depots[0].lat || 0,
+      lng: depots[0].lng || 0,
     },
   }
 
-  try {
-    // Railway OR-Tools API çağrısı
-    const response = await fetch(`${RAILWAY_API_URL}/optimize`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
+  const response = await fetch(`${RAILWAY_API_URL}/optimize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customers: railwayCustomers,
+      vehicles: railwayVehicles,
+      depot: railwayDepot,
+      fuel_price: options.fuelPricePerLiter,
+    }),
+  })
 
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Railway API error: ${response.status} - ${error}`)
-    }
-
-    const ortoolsResult = await response.json()
-
-    // OR-Tools sonuçlarını işle ve ORS ile geometri ekle
-    const routesWithGeometry = await Promise.all(
-      ortoolsResult.routes.map(async (route: any) => {
-        const routePoints = [
-          { lat: route.depot_lat, lng: route.depot_lng },
-          ...route.stops.map((s: any) => ({ lat: s.lat, lng: s.lng })),
-          { lat: route.depot_lat, lng: route.depot_lng },
-        ]
-
-        let geometryPoints = routePoints
-        const geometry = null
-
-        // ORS ile gerçek rota geometrisi al
-        if (ORS_API_KEY) {
-          try {
-            const client = new ORSClient(ORS_API_KEY)
-            geometryPoints = await client.getRouteGeometry(routePoints, "driving-hgv")
-            // Geometry string encode edilebilir (isteğe bağlı)
-          } catch (e) {
-            console.warn("[v0] ORS geometry hatası, route points kullanılıyor:", e)
-          }
-        }
-
-        // Köprü/otoyol maliyetlerini hesapla
-        const vehicleType = route.vehicle_type || "truck"
-        const tollCalculation = calculateTollCosts(geometryPoints, vehicleType, route.total_distance)
-
-        // Maliyetleri güncelle (OR-Tools yakıt + mesafe + sabit maliyetleri hesaplamış)
-        const fuelCost = route.fuel_cost || 0
-        const distanceCost = route.distance_cost || 0
-        const fixedCost = route.fixed_cost || 0
-        const tollCost = tollCalculation.totalTollCost
-        const totalCost = fuelCost + distanceCost + fixedCost + tollCost
-
-        return {
-          vehicleId: route.vehicle_id,
-          vehiclePlate: route.vehicle_plate,
-          vehicleType: route.vehicle_type,
-          depotId: route.depot_id,
-          depotName: route.depot_name,
-          stops: route.stops,
-          totalDistance: route.total_distance,
-          totalDuration: route.total_duration,
-          totalCost: Math.round(totalCost * 100) / 100,
-          fuelCost: Math.round(fuelCost * 100) / 100,
-          fixedCost: Math.round(fixedCost * 100) / 100,
-          distanceCost: Math.round(distanceCost * 100) / 100,
-          tollCost: Math.round(tollCost * 100) / 100,
-          tollCrossings: tollCalculation.crossings,
-          highwayUsage: tollCalculation.highwayUsage,
-          totalLoad: route.total_load,
-          capacityUtilization: route.capacity_utilization,
-          geometry,
-          constraintViolations: route.constraint_violations || [],
-        }
-      }),
-    )
-
-    const computationTime = Date.now() - startTime
-
-    return {
-      success: true,
-      provider: "ortools",
-      summary: {
-        totalRoutes: ortoolsResult.summary.total_routes,
-        totalDistance: ortoolsResult.summary.total_distance,
-        totalDuration: ortoolsResult.summary.total_duration,
-        totalCost: routesWithGeometry.reduce((sum, r) => sum + r.totalCost, 0),
-        fuelCost: routesWithGeometry.reduce((sum, r) => sum + r.fuelCost, 0),
-        fixedCost: routesWithGeometry.reduce((sum, r) => sum + r.fixedCost, 0),
-        distanceCost: routesWithGeometry.reduce((sum, r) => sum + r.distanceCost, 0),
-        tollCost: routesWithGeometry.reduce((sum, r) => sum + r.tollCost, 0),
-        unassignedCount: ortoolsResult.summary.unassigned_count,
-        computationTimeMs: computationTime,
-        avgCapacityUtilization: ortoolsResult.summary.avg_capacity_utilization,
-      },
-      routes: routesWithGeometry,
-      unassigned: ortoolsResult.unassigned || [],
-    }
-  } catch (error) {
-    console.error("[v0] Railway OR-Tools hatası:", error)
-    throw error
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(`OR-Tools optimization failed: ${error.detail || response.statusText}`)
   }
+
+  const result = await response.json()
+  console.log("[v0] OR-Tools result:", result.routes?.length || 0, "routes")
+
+  return result
 }
 
 // Yerel Nearest Neighbor optimizer (fallback)
@@ -712,66 +621,75 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { depots, vehicles, customers, options = {} } = body
 
-    console.log("[v0] Optimization request:", {
-      customers: customers?.length,
-      vehicles: vehicles?.length,
-      depots: depots?.length,
-    })
-
-    let result
-
-    if (RAILWAY_API_URL) {
-      console.log("[v0] Using OR-Tools (Railway)")
-      try {
-        result = await optimizeWithORTools(depots, vehicles, customers, {
-          fuelPricePerLiter: options.fuelPricePerLiter || 47.5,
-          maxRouteDistanceKm: options.maxRouteDistanceKm,
-          maxRouteTimeMin: options.maxRouteTimeMin,
-          vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.8,
-        })
-      } catch (ortoolsError) {
-        console.error("[v0] OR-Tools failed, falling back to ORS:", ortoolsError)
-        result = ORS_API_KEY
-          ? await optimizeWithORS(depots, vehicles, customers, {
-              fuelPricePerLiter: options.fuelPricePerLiter || 47.5,
-              maxRouteDistanceKm: options.maxRouteDistanceKm,
-              maxRouteTimeMin: options.maxRouteTimeMin,
-              vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.8,
-            })
-          : localOptimize(depots, vehicles, customers, {
-              fuelPricePerLiter: options.fuelPricePerLiter || 47.5,
-              maxRouteDistanceKm: options.maxRouteDistanceKm,
-              maxRouteTimeMin: options.maxRouteTimeMin,
-              vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.8,
-            })
-      }
-    } else if (ORS_API_KEY) {
-      console.log("[v0] Using ORS (RAILWAY_API_URL not set)")
-      result = await optimizeWithORS(depots, vehicles, customers, {
-        fuelPricePerLiter: options.fuelPricePerLiter || 47.5,
-        maxRouteDistanceKm: options.maxRouteDistanceKm,
-        maxRouteTimeMin: options.maxRouteTimeMin,
-        vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.8,
-      })
-    } else {
-      console.log("[v0] Using local optimizer (fallback)")
-      result = localOptimize(depots, vehicles, customers, {
-        fuelPricePerLiter: options.fuelPricePerLiter || 47.5,
-        maxRouteDistanceKm: options.maxRouteDistanceKm,
-        maxRouteTimeMin: options.maxRouteTimeMin,
-        vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.8,
-      })
+    if (!depots || !Array.isArray(depots) || depots.length === 0) {
+      return NextResponse.json({ error: "En az bir depo gerekli" }, { status: 400 })
     }
 
-    return NextResponse.json(result)
+    if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
+      return NextResponse.json({ error: "En az bir araç gerekli" }, { status: 400 })
+    }
+
+    if (!customers || !Array.isArray(customers) || customers.length === 0) {
+      return NextResponse.json({ error: "En az bir müşteri gerekli" }, { status: 400 })
+    }
+
+    const missingCoords = customers.filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
+    if (missingCoords.length > 0) {
+      return NextResponse.json(
+        {
+          error: `${missingCoords.length} müşteri için koordinat bilgisi eksik`,
+          missingCustomers: missingCoords.map((c) => ({ id: c.id, name: c.name })),
+        },
+        { status: 400 },
+      )
+    }
+
+    const optimizationOptions = {
+      fuelPricePerLiter: options.fuelPrice || 47.5,
+      maxRouteDistanceKm: options.maxRouteDistance || undefined,
+      maxRouteTimeMin: options.maxRouteDuration || 600,
+      vehicleCapacityUtilization: options.vehicleCapacityUtilization || 0.85,
+    }
+
+    let result
+    let provider = "unknown"
+
+    // OR-Tools öncelikli
+    if (RAILWAY_API_URL) {
+      try {
+        console.log("[v0] Trying OR-Tools via Railway...")
+        result = await optimizeWithORTools(depots, vehicles, customers, optimizationOptions)
+        provider = "ortools"
+      } catch (error) {
+        console.error("[v0] OR-Tools failed:", error)
+        // ORS fallback
+        if (ORS_API_KEY) {
+          console.log("[v0] Falling back to ORS...")
+          result = await optimizeWithORS(depots, vehicles, customers, optimizationOptions)
+          provider = "openrouteservice"
+        } else {
+          throw error
+        }
+      }
+    } else if (ORS_API_KEY) {
+      console.log("[v0] Using ORS (no Railway URL)...")
+      result = await optimizeWithORS(depots, vehicles, customers, optimizationOptions)
+      provider = "openrouteservice"
+    } else {
+      return NextResponse.json(
+        {
+          error: "No optimization service available. Set RAILWAY_API_URL or ORS_API_KEY",
+        },
+        { status: 500 },
+      )
+    }
+
+    return NextResponse.json({
+      ...result,
+      provider,
+    })
   } catch (error) {
-    console.error("Optimizasyon hatası:", error)
-    return NextResponse.json(
-      {
-        error: "Optimizasyon sırasında bir hata oluştu",
-        details: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 },
-    )
+    console.error("[v0] Optimization error:", error)
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Optimizasyon hatası" }, { status: 500 })
   }
 }
