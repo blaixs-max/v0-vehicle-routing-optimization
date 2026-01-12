@@ -315,6 +315,17 @@ async function optimizeWithRailway(
     customers: selectedCustomers.length,
   })
 
+  if (!selectedDepots || selectedDepots.length === 0) {
+    throw new Error("En az bir depo gereklidir")
+  }
+
+  const primaryDepot = selectedDepots[0]
+  if (!primaryDepot || !primaryDepot.lat || !primaryDepot.lng || primaryDepot.lat === 0 || primaryDepot.lng === 0) {
+    throw new Error("Geçerli koordinatlara sahip depo bulunamadı")
+  }
+
+  console.log("[v0] Primary depot:", primaryDepot.id, "at", primaryDepot.lat, primaryDepot.lng)
+
   const validCustomers = selectedCustomers.filter((c) => {
     const hasValidCoords = c.lat && c.lng && c.lat !== 0 && c.lng !== 0
     if (!hasValidCoords) {
@@ -388,10 +399,10 @@ async function optimizeWithRailway(
       fuel_consumption: v.fuel_consumption_per_100km || 25,
     })),
     depot: {
-      id: selectedDepots[0].id,
+      id: primaryDepot.id,
       location: {
-        lat: selectedDepots[0].lat,
-        lng: selectedDepots[0].lng,
+        lat: primaryDepot.lat,
+        lng: primaryDepot.lng,
       },
     },
     fuel_price: options?.fuelPricePerLiter || 47.5,
@@ -399,6 +410,7 @@ async function optimizeWithRailway(
 
   console.log("[v0] Calling Railway API:", `${RAILWAY_API_URL}/optimize`)
   console.log("[v0] Sending customers count:", railwayRequest.customers.length)
+  console.log("[v0] Sending depot:", railwayRequest.depot)
 
   try {
     const railwayResponse = await fetch(`${RAILWAY_API_URL}/optimize`, {
