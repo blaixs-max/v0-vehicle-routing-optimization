@@ -64,13 +64,62 @@ def parse_time_constraint(constraint: str) -> tuple:
 def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fuel_price: float = 47.50) -> dict:
     """OR-Tools ile rota optimizasyonu"""
     
+    print(f"[OR-Tools] Starting optimization with {len(customers)} customers, {len(vehicles)} vehicles")
+    print(f"[OR-Tools] Depot location: {depot['location']}")
+    
+    # Validate depot coordinates
+    depot_lat = depot["location"]["lat"]
+    depot_lng = depot["location"]["lng"]
+    if not (-90 <= depot_lat <= 90) or not (-180 <= depot_lng <= 180):
+        raise Exception(f"Invalid depot coordinates: lat={depot_lat}, lng={depot_lng}")
+    
+    # Validate customers
+    valid_customers = []
+    for i, customer in enumerate(customers):
+        lat = customer["location"]["lat"]
+        lng = customer["location"]["lng"]
+        demand = customer.get("demand_pallets", 0)
+        
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            print(f"[OR-Tools] WARNING: Skipping customer {customer['id']} - invalid coordinates: lat={lat}, lng={lng}")
+            continue
+        
+        if demand <= 0:
+            print(f"[OR-Tools] WARNING: Customer {customer['id']} has zero or negative demand: {demand}")
+            customer["demand_pallets"] = 1  # Set minimum demand
+        
+        valid_customers.append(customer)
+    
+    if len(valid_customers) == 0:
+        raise Exception("No valid customers after validation")
+    
+    customers = valid_customers
+    print(f"[OR-Tools] Valid customers: {len(customers)}")
+    
+    # Validate vehicles
+    valid_vehicles = []
+    for vehicle in vehicles:
+        capacity = vehicle.get("capacity_pallets", 0)
+        if capacity <= 0:
+            print(f"[OR-Tools] WARNING: Vehicle {vehicle['id']} has zero or negative capacity: {capacity}")
+            continue
+        valid_vehicles.append(vehicle)
+    
+    if len(valid_vehicles) == 0:
+        raise Exception("No valid vehicles after validation")
+    
+    vehicles = valid_vehicles
+    print(f"[OR-Tools] Valid vehicles: {len(vehicles)}")
+    
     # Lokasyonlar: [depot] + customers
-    locations = [(depot["location"]["lat"], depot["location"]["lng"])]
+    locations = [(depot_lat, depot_lng)]
     for customer in customers:
         locations.append((customer["location"]["lat"], customer["location"]["lng"]))
     
     num_locations = len(locations)
     num_vehicles = len(vehicles)
+    
+    print(f"[OR-Tools] Building distance matrix for {num_locations} locations...")
     
     # Mesafe matrisi oluştur (km)
     distance_matrix = []
@@ -84,8 +133,13 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
                     locations[i][0], locations[i][1],
                     locations[j][0], locations[j][1]
                 )
+                if math.isnan(dist) or math.isinf(dist) or dist < 0:
+                    print(f"[OR-Tools] ERROR: Invalid distance between {i} and {j}: {dist}")
+                    raise Exception(f"Invalid distance calculated: {dist}")
                 row.append(int(dist * 1000))  # Metre cinsinden
         distance_matrix.append(row)
+    
+    print(f"[OR-Tools] Distance matrix built successfully")
     
     # Zaman matrisi (dakika) - 50 km/h ortalama hız
     time_matrix = []
@@ -111,8 +165,11 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
     total_capacity = sum(vehicle_capacities)
     
     print(f"[OR-Tools] Total vehicle capacity: {total_capacity} pallets")
+    print(f"[OR-Tools] Vehicle capacities: {vehicle_capacities}")
+    
     if total_demand > total_capacity:
-        print(f"[OR-Tools] WARNING: Demand exceeds capacity!")
+        print(f"[OR-Tools] WARNING: Demand ({total_demand}) exceeds capacity ({total_capacity})!")
+        # Bu durum çözüm bulunamaz ancak devam edelim, belki partial solution bulunabilir
     
     # Servis süreleri
     service_times = [0]  # Depo
@@ -121,8 +178,19 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
         service_times.append(SERVICE_TIMES.get(business, SERVICE_TIMES["default"]))
     
     # Routing model oluştur
-    manager = pywrapcp.RoutingIndexManager(num_locations, num_vehicles, 0)
-    routing = pywrapcp.RoutingModel(manager)
+    try:
+        manager = pywrapcp.RoutingIndexManager(num_locations, num_vehicles, 0)
+        print(f"[OR-Tools] RoutingIndexManager created successfully")
+    except Exception as e:
+        print(f"[OR-Tools] ERROR: Failed to create RoutingIndexManager: {str(e)}")
+        raise Exception(f"Failed to create RoutingIndexManager: {str(e)}")
+    
+    try:
+        routing = pywrapcp.RoutingModel(manager)
+        print(f"[OR-Tools] RoutingModel created successfully")
+    except Exception as e:
+        print(f"[OR-Tools] ERROR: Failed to create RoutingModel: {str(e)}")
+        raise Exception(f"Failed to create RoutingModel: {str(e)}")
     
     # Mesafe callback
     def distance_callback(from_index, to_index):
@@ -170,18 +238,20 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     )
-    search_parameters.time_limit.seconds = 120
+    search_parameters.time_limit.seconds = 180  # Timeout 120'den 180 saniyeye çıkarıldı (5 dakika için yeterli)
     
     search_parameters.log_search = True
     
     print("[OR-Tools] Starting solver...")
+    print(f"[OR-Tools] Search parameters: timeout={search_parameters.time_limit.seconds}s")
     
     # Çözümü bul
     solution = routing.SolveWithParameters(search_parameters)
     
     if not solution:
         print("[OR-Tools] No solution found!")
-        print(f"[OR-Tools] Status: {routing.status()}")
+        status = routing.status()
+        print(f"[OR-Tools] Status code: {status}")
         
         # Status kodları
         status_messages = {
@@ -192,8 +262,18 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
             4: "ROUTING_INVALID"
         }
         
-        status_msg = status_messages.get(routing.status(), "UNKNOWN")
+        status_msg = status_messages.get(status, "UNKNOWN")
         print(f"[OR-Tools] Status message: {status_msg}")
+        
+        if status == 4:  # ROUTING_INVALID
+            error_details = []
+            error_details.append(f"Locations: {num_locations}")
+            error_details.append(f"Vehicles: {num_vehicles}")
+            error_details.append(f"Total demand: {total_demand} pallets")
+            error_details.append(f"Total capacity: {total_capacity} pallets")
+            error_details.append(f"Demand/Capacity ratio: {total_demand/total_capacity:.2f}")
+            
+            raise Exception(f"ROUTING_INVALID - Model initialization failed. Details: {'; '.join(error_details)}")
         
         raise Exception(f"No solution found. Status: {status_msg}")
     

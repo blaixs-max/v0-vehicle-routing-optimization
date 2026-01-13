@@ -441,14 +441,19 @@ async function optimizeWithRailway(
   console.log("[v0] Sample vehicle data:", railwayRequest.vehicles[0])
 
   try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 60000) // Vercel free tier max 60 seconds
+
     const railwayResponse = await fetch(`${RAILWAY_API_URL}/optimize`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(railwayRequest),
-      signal: AbortSignal.timeout(60000),
+      signal: controller.signal,
     })
+
+    clearTimeout(timeoutId)
 
     console.log("[v0] Railway response status:", railwayResponse.status)
 
@@ -515,7 +520,7 @@ async function optimizeWithRailway(
     console.error("[v0] Railway fetch error:", fetchError)
 
     if (fetchError instanceof Error && fetchError.name === "AbortError") {
-      throw new Error("Railway API timeout (60 saniye)")
+      throw new Error("Railway API timeout (1 dakika)")
     }
 
     throw new Error(
@@ -585,3 +590,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const maxDuration = 60 // Vercel free tier max 60 seconds
