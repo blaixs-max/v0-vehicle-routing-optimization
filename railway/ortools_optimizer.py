@@ -238,7 +238,7 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     )
-    search_parameters.time_limit.seconds = 180  # Timeout 120'den 180 saniyeye çıkarıldı (5 dakika için yeterli)
+    search_parameters.time_limit.seconds = 30
     
     search_parameters.log_search = True
     
