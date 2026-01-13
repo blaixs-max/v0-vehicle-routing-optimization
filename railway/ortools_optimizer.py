@@ -61,271 +61,202 @@ def parse_time_constraint(constraint: str) -> tuple:
     
     return (0, 24 * 60)
 
-def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fuel_price: float = 47.50) -> dict:
-    """OR-Tools ile rota optimizasyonu"""
-    
-    print(f"[OR-Tools] Starting optimization with {len(customers)} customers, {len(vehicles)} vehicles")
-    
-    # Validate depot coordinates
-    depot_lat = depot["location"]["lat"]
-    depot_lng = depot["location"]["lng"]
-    
-    if not (-90 <= depot_lat <= 90) or not (-180 <= depot_lng <= 180):
-        raise Exception(f"Invalid depot coordinates: ({depot_lat}, {depot_lng})")
-    
-    print(f"[OR-Tools] Depot location: ({depot_lat}, {depot_lng})")
-    
-    # Validate customer coordinates
-    for idx, customer in enumerate(customers):
-        lat = customer["location"]["lat"]
-        lng = customer["location"]["lng"]
+def optimize_routes(depot: dict, customers: list, vehicles: list) -> dict:
+    """OR-Tools VRP optimizasyonu"""
+    try:
+        print(f"[OR-Tools] Starting optimization")
+        print(f"[OR-Tools] Depot: {depot}")
+        print(f"[OR-Tools] Customers: {len(customers)}")
+        print(f"[OR-Tools] Vehicles: {len(vehicles)}")
         
-        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-            raise Exception(f"Invalid customer {idx} coordinates: ({lat}, {lng})")
+        depot_lat = depot["location"]["lat"]
+        depot_lng = depot["location"]["lng"]
         
-        # Check if customer is too close to depot (causes routing issues)
-        dist_to_depot = haversine_distance(depot_lat, depot_lng, lat, lng)
-        if dist_to_depot < 0.1:  # Less than 100 meters
-            print(f"[OR-Tools] WARNING: Customer {idx} is very close to depot ({dist_to_depot:.2f} km)")
-
-    # Validate customers
-    valid_customers = []
-    for i, customer in enumerate(customers):
-        lat = customer["location"]["lat"]
-        lng = customer["location"]["lng"]
-        demand = customer.get("demand_pallets", 0)
+        if not (-90 <= depot_lat <= 90) or not (-180 <= depot_lng <= 180):
+            raise ValueError(f"Invalid depot coordinates: lat={depot_lat}, lng={depot_lng}")
         
-        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-            print(f"[OR-Tools] WARNING: Skipping customer {customer['id']} - invalid coordinates: lat={lat}, lng={lng}")
-            continue
+        print(f"[OR-Tools] Depot coordinates: ({depot_lat}, {depot_lng})")
         
-        if demand <= 0:
-            print(f"[OR-Tools] WARNING: Customer {customer['id']} has zero or negative demand: {demand}")
-            customer["demand_pallets"] = 1  # Set minimum demand
+        locations = [(depot_lat, depot_lng)]
+        demands = [0]
         
-        valid_customers.append(customer)
-    
-    if len(valid_customers) == 0:
-        raise Exception("No valid customers after validation")
-    
-    customers = valid_customers
-    print(f"[OR-Tools] Valid customers: {len(customers)}")
-    
-    # Validate vehicles
-    valid_vehicles = []
-    for vehicle in vehicles:
-        capacity = vehicle.get("capacity_pallets", 0)
-        if capacity <= 0:
-            print(f"[OR-Tools] WARNING: Vehicle {vehicle['id']} has zero or negative capacity: {capacity}")
-            continue
-        valid_vehicles.append(vehicle)
-    
-    if len(valid_vehicles) == 0:
-        raise Exception("No valid vehicles after validation")
-    
-    vehicles = valid_vehicles
-    print(f"[OR-Tools] Valid vehicles: {len(vehicles)}")
-    
-    # Lokasyonlar: [depot] + customers
-    locations = [(depot_lat, depot_lng)]
-    for customer in customers:
-        locations.append((customer["location"]["lat"], customer["location"]["lng"]))
-    
-    num_locations = len(locations)
-    num_vehicles = len(vehicles)
-    
-    print(f"[OR-Tools] Building distance matrix for {num_locations} locations...")
-    
-    # Mesafe matrisi oluştur (km)
-    distance_matrix = []
-    for i in range(num_locations):
-        row = []
-        for j in range(num_locations):
-            if i == j:
-                row.append(0)
-            else:
-                dist = haversine_distance(
-                    locations[i][0], locations[i][1],
-                    locations[j][0], locations[j][1]
-                )
-                if math.isnan(dist) or math.isinf(dist) or dist < 0:
-                    print(f"[OR-Tools] ERROR: Invalid distance between {i} and {j}")
-                    print(f"[OR-Tools] Location {i}: {locations[i]}")
-                    print(f"[OR-Tools] Location {j}: {locations[j]}")
-                    raise Exception(f"Invalid distance calculated: {dist}")
+        for i, customer in enumerate(customers):
+            lat = customer["location"]["lat"]
+            lng = customer["location"]["lng"]
+            
+            if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+                print(f"[OR-Tools] WARNING: Invalid customer {i} coordinates: lat={lat}, lng={lng}")
+                continue
                 
-                # Minimum distance 100m to avoid routing issues
-                dist = max(dist, 0.1)
-                row.append(int(dist * 1000))  # Metre cinsinden
-        distance_matrix.append(row)
-    
-    print(f"[OR-Tools] Distance matrix built successfully")
-    print(f"[OR-Tools] Sample distances (km): 0->1: {distance_matrix[0][1]/1000:.2f}, 1->2: {distance_matrix[1][2]/1000:.2f}")
-    
-    # Talep (palet)
-    demands = [0]  # Depo talebi 0
-    total_demand = 0
-    for customer in customers:
-        demand = customer["demand_pallets"]
-        demands.append(demand)
-        total_demand += demand
-    
-    print(f"[OR-Tools] Total demand: {total_demand} pallets")
-    
-    # Araç kapasiteleri
-    vehicle_capacities = [v["capacity_pallets"] for v in vehicles]
-    total_capacity = sum(vehicle_capacities)
-    
-    print(f"[OR-Tools] Total vehicle capacity: {total_capacity} pallets")
-    print(f"[OR-Tools] Vehicle capacities: {vehicle_capacities}")
-    
-    if total_demand > total_capacity:
-        print(f"[OR-Tools] WARNING: Demand ({total_demand}) exceeds capacity ({total_capacity})!")
-        # Bu durum çözüm bulunamaz ancak devam edelim, belki partial solution bulunabilir
-    
-    # Servis süreleri
-    service_times = [0]  # Depo
-    for customer in customers:
-        business = customer.get("business_type", "default")
-        service_times.append(SERVICE_TIMES.get(business, SERVICE_TIMES["default"]))
-    
-    # Routing model oluştur
-    try:
+            locations.append((lat, lng))
+            demands.append(customer.get("demand_pallets", 1))
+        
+        num_locations = len(locations)
+        num_vehicles = len(vehicles)
+        
+        print(f"[OR-Tools] Valid locations: {num_locations}")
+        print(f"[OR-Tools] Total demand: {sum(demands)} pallets")
+        
+        distance_matrix = []
+        for i, loc1 in enumerate(locations):
+            row = []
+            for j, loc2 in enumerate(locations):
+                if i == j:
+                    row.append(0)
+                else:
+                    dist = haversine_distance(loc1[0], loc1[1], loc2[0], loc2[1])
+                    if dist < 0 or dist > 20000:  # 20000 km sanity check
+                        print(f"[OR-Tools] WARNING: Suspicious distance between {i} and {j}: {dist}km")
+                        dist = max(1, min(dist, 20000))
+                    row.append(int(dist * 1000))  # meters to integer
+            distance_matrix.append(row)
+        
+        print(f"[OR-Tools] Distance matrix size: {len(distance_matrix)}x{len(distance_matrix[0])}")
+        print(f"[OR-Tools] Sample distances from depot: {distance_matrix[0][:5]}")
+        
+        vehicle_capacities = []
+        for v in vehicles:
+            cap = v.get("capacity_pallets", 26)
+            if cap <= 0:
+                print(f"[OR-Tools] WARNING: Vehicle {v.get('id')} has invalid capacity: {cap}")
+                cap = 26
+            vehicle_capacities.append(cap)
+        
+        total_capacity = sum(vehicle_capacities)
+        total_demand = sum(demands)
+        
+        print(f"[OR-Tools] Total capacity: {total_capacity} pallets")
+        print(f"[OR-Tools] Demand/Capacity ratio: {total_demand/total_capacity:.2f}")
+        
+        if total_demand > total_capacity:
+            raise ValueError(f"Total demand ({total_demand}) exceeds total capacity ({total_capacity})")
+        
+        print(f"[OR-Tools] Creating RoutingIndexManager...")
+        print(f"[OR-Tools] Parameters: locations={num_locations}, vehicles={num_vehicles}, depot=0")
+        
         manager = pywrapcp.RoutingIndexManager(num_locations, num_vehicles, 0)
-        print(f"[OR-Tools] RoutingIndexManager created successfully")
-    except Exception as e:
-        print(f"[OR-Tools] ERROR: Failed to create RoutingIndexManager: {str(e)}")
-        raise Exception(f"Failed to create RoutingIndexManager: {str(e)}")
-    
-    try:
+        print(f"[OR-Tools] RoutingIndexManager created")
+        
+        print(f"[OR-Tools] Creating RoutingModel...")
         routing = pywrapcp.RoutingModel(manager)
-        print(f"[OR-Tools] RoutingModel created successfully")
-    except Exception as e:
-        print(f"[OR-Tools] ERROR: Failed to create RoutingModel: {str(e)}")
-        raise Exception(f"Failed to create RoutingModel: {str(e)}")
-    
-    # Mesafe callback
-    def distance_callback(from_index, to_index):
-        from_node = manager.IndexToNode(from_index)
-        to_node = manager.IndexToNode(to_index)
-        return distance_matrix[from_node][to_node]
-    
-    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
-    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
-    
-    # Kapasite kısıtı
-    def demand_callback(from_index):
-        from_node = manager.IndexToNode(from_index)
-        return demands[from_node]
-    
-    demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
-    routing.AddDimensionWithVehicleCapacity(
-        demand_callback_index,
-        0,  # Null capacity slack
-        vehicle_capacities,
-        True,  # Start cumul to zero
-        'Capacity'
-    )
-    
-    search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
-    )
-    search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    )
-    search_parameters.time_limit.seconds = 30
-    search_parameters.log_search = True
-    
-    print("[OR-Tools] Starting solver...")
-    print(f"[OR-Tools] Search parameters: timeout={search_parameters.time_limit.seconds}s")
-    
-    # Çözümü bul
-    solution = routing.SolveWithParameters(search_parameters)
-    
-    if not solution:
-        print("[OR-Tools] No solution found!")
-        status = routing.status()
-        print(f"[OR-Tools] Status code: {status}")
+        print(f"[OR-Tools] RoutingModel created")
         
-        # Status kodları
-        status_messages = {
-            0: "ROUTING_NOT_SOLVED",
-            1: "ROUTING_SUCCESS",
-            2: "ROUTING_FAIL",
-            3: "ROUTING_FAIL_TIMEOUT",
-            4: "ROUTING_INVALID"
-        }
+        def distance_callback(from_index, to_index):
+            try:
+                from_node = manager.IndexToNode(from_index)
+                to_node = manager.IndexToNode(to_index)
+                return distance_matrix[from_node][to_node]
+            except Exception as e:
+                print(f"[OR-Tools] ERROR in distance_callback: {e}")
+                return 1000000
         
-        status_msg = status_messages.get(status, "UNKNOWN")
-        print(f"[OR-Tools] Status message: {status_msg}")
+        transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+        routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+        print(f"[OR-Tools] Distance callback registered")
         
-        if status == 4:  # ROUTING_INVALID
-            error_details = []
-            error_details.append(f"Locations: {num_locations}")
-            error_details.append(f"Vehicles: {num_vehicles}")
-            error_details.append(f"Total demand: {total_demand} pallets")
-            error_details.append(f"Total capacity: {total_capacity} pallets")
-            error_details.append(f"Demand/Capacity ratio: {total_demand/total_capacity:.2f}")
+        def demand_callback(from_index):
+            try:
+                from_node = manager.IndexToNode(from_index)
+                return demands[from_node]
+            except Exception as e:
+                print(f"[OR-Tools] ERROR in demand_callback: {e}")
+                return 0
+        
+        demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
+        routing.AddDimensionWithVehicleCapacity(
+            demand_callback_index,
+            0,
+            vehicle_capacities,
+            True,
+            'Capacity'
+        )
+        print(f"[OR-Tools] Capacity dimension added")
+        
+        search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+        search_parameters.first_solution_strategy = (
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+        )
+        search_parameters.time_limit.seconds = 30
+        
+        print(f"[OR-Tools] Starting solver with 30s timeout...")
+        solution = routing.SolveWithParameters(search_parameters)
+        
+        if not solution:
+            status = routing.status()
+            status_messages = {
+                0: "ROUTING_NOT_SOLVED",
+                1: "ROUTING_SUCCESS",
+                2: "ROUTING_FAIL",
+                3: "ROUTING_FAIL_TIMEOUT",
+                4: "ROUTING_INVALID"
+            }
+            status_msg = status_messages.get(status, f"UNKNOWN({status})")
+            print(f"[OR-Tools] No solution found. Status: {status_msg}")
             
-            raise Exception(f"ROUTING_INVALID - Model initialization failed. Details: {'; '.join(error_details)}")
+            raise Exception(f"ROUTING_INVALID - Model initialization failed. Details: Locations: {num_locations}; Vehicles: {num_vehicles}; Total demand: {total_demand} pallets; Total capacity: {total_capacity} pallets; Demand/Capacity ratio: {total_demand/total_capacity:.2f}")
         
-        raise Exception(f"No solution found. Status: {status_msg}")
-    
-    print(f"[OR-Tools] Solution found! Objective value: {solution.ObjectiveValue()}")
-    
-    # Sonuçları parse et
-    routes = []
-    total_distance = 0
-    
-    for vehicle_id in range(num_vehicles):
-        index = routing.Start(vehicle_id)
-        route_distance = 0
-        route_stops = []
+        # Servis süreleri
+        service_times = [0]  # Depo
+        for customer in customers:
+            business = customer.get("business_type", "default")
+            service_times.append(SERVICE_TIMES.get(business, SERVICE_TIMES["default"]))
         
-        while not routing.IsEnd(index):
-            node_index = manager.IndexToNode(index)
+        # Sonuçları parse et
+        routes = []
+        total_distance = 0
+        
+        for vehicle_id in range(num_vehicles):
+            index = routing.Start(vehicle_id)
+            route_distance = 0
+            route_stops = []
             
-            if node_index > 0:  # Depo değilse
-                customer = customers[node_index - 1]
-                route_stops.append({
-                    "customer_id": customer["id"],
-                    "customer_name": customer["name"],
-                    "location": customer["location"],
-                    "demand": customer["demand_pallets"],
-                    "service_time": service_times[node_index]
+            while not routing.IsEnd(index):
+                node_index = manager.IndexToNode(index)
+                
+                if node_index > 0:  # Depo değilse
+                    customer = customers[node_index - 1]
+                    route_stops.append({
+                        "customer_id": customer["id"],
+                        "customer_name": customer["name"],
+                        "location": customer["location"],
+                        "demand": customer["demand_pallets"],
+                        "service_time": service_times[node_index]
+                    })
+                
+                previous_index = index
+                index = solution.Value(routing.NextVar(index))
+                route_distance += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
+            
+            if len(route_stops) > 0:
+                route_distance_km = route_distance / 1000
+                vehicle = vehicles[vehicle_id]
+                fuel_consumption = VEHICLE_TYPES[vehicle["type"]]["fuel"]
+                fuel_price = 47.50  # Assuming a fixed fuel price for simplicity
+                fuel_cost = (route_distance_km / 100) * fuel_consumption * fuel_price
+                
+                routes.append({
+                    "vehicle_id": vehicle["id"],
+                    "vehicle_type": vehicle["type"],
+                    "stops": route_stops,
+                    "distance_km": round(route_distance_km, 2),
+                    "fuel_cost": round(fuel_cost, 2),
+                    "total_pallets": sum(s["demand"] for s in route_stops)
                 })
-            
-            previous_index = index
-            index = solution.Value(routing.NextVar(index))
-            route_distance += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
+                
+                total_distance += route_distance_km
         
-        if len(route_stops) > 0:
-            route_distance_km = route_distance / 1000
-            vehicle = vehicles[vehicle_id]
-            fuel_consumption = VEHICLE_TYPES[vehicle["type"]]["fuel"]
-            fuel_cost = (route_distance_km / 100) * fuel_consumption * fuel_price
-            
-            routes.append({
-                "vehicle_id": vehicle["id"],
-                "vehicle_type": vehicle["type"],
-                "stops": route_stops,
-                "distance_km": round(route_distance_km, 2),
-                "fuel_cost": round(fuel_cost, 2),
-                "total_pallets": sum(s["demand"] for s in route_stops)
-            })
-            
-            total_distance += route_distance_km
-    
-    print(f"[OR-Tools] Generated {len(routes)} routes")
-    print(f"[OR-Tools] Total distance: {round(total_distance, 2)} km")
-    
-    return {
-        "routes": routes,
-        "summary": {
-            "total_routes": len(routes),
-            "total_distance_km": round(total_distance, 2),
-            "total_vehicles_used": len(routes),
-            "algorithm": "OR-Tools"
+        print(f"[OR-Tools] Generated {len(routes)} routes")
+        print(f"[OR-Tools] Total distance: {round(total_distance, 2)} km")
+        
+        return {
+            "routes": routes,
+            "summary": {
+                "total_routes": len(routes),
+                "total_distance_km": round(total_distance, 2),
+                "total_vehicles_used": len(routes),
+                "algorithm": "OR-Tools"
+            }
         }
-    }
+    except Exception as e:
+        print(f"[OR-Tools] ERROR during optimization: {e}")
+        raise e
