@@ -487,8 +487,22 @@ async function optimizeWithRailway(
         const vehicle = vehicleMap.get(vehicleId)
         const vehicleName = vehicle?.plate || vehicle?.name || `Araç ${vehicleId}`
 
-        const depotId = route.depot_id || route.depotId || selectedDepot.id
-        const depot = depotMap.get(depotId) || selectedDepot
+        const firstStop = route.stops?.[0]
+        let depot = selectedDepot
+
+        if (firstStop && depots.length > 1) {
+          const firstStopLat = firstStop.location?.lat || 0
+          const firstStopLng = firstStop.location?.lng || 0
+
+          let minDistance = Number.POSITIVE_INFINITY
+          for (const d of depots) {
+            const distance = haversineDistance(firstStopLat, firstStopLng, d.lat, d.lng)
+            if (distance < minDistance) {
+              minDistance = distance
+              depot = d
+            }
+          }
+        }
 
         const stops = (route.stops || []).map((stop: any, index: number) => {
           const customerId = stop.customer_id || stop.customerId
@@ -616,6 +630,28 @@ function mapVehicleTypeToInt(type: string | undefined): number {
   }
 
   return 3
+}
+
+function findNearestDepot(firstStop: any, depots: any[]): any {
+  if (!firstStop || !depots || depots.length === 0) {
+    return depots[0]
+  }
+
+  const stopLat = firstStop.location?.lat || firstStop.lat || 0
+  const stopLng = firstStop.location?.lng || firstStop.lng || 0
+
+  let nearestDepot = depots[0]
+  let minDistance = Number.POSITIVE_INFINITY
+
+  for (const depot of depots) {
+    const distance = haversineDistance(stopLat, stopLng, depot.lat, depot.lng)
+    if (distance < minDistance) {
+      minDistance = distance
+      nearestDepot = depot
+    }
+  }
+
+  return nearestDepot
 }
 
 export async function POST(request: NextRequest) {

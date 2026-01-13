@@ -61,25 +61,27 @@ def parse_time_constraint(constraint: str) -> tuple:
     
     return (0, 24 * 60)
 
-def optimize_routes(depot: dict, customers: list, vehicles: list, fuel_price: float = 47.50) -> dict:
-    """OR-Tools VRP optimizasyonu"""
+def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: float = 47.50) -> dict:
+    """Multi-depot VRP optimizer"""
     try:
-        print(f"[OR-Tools] Starting optimization")
-        print(f"[OR-Tools] Depot: {depot}")
+        print(f"[OR-Tools] Starting optimization...")
+        print(f"[OR-Tools] Depots: {len(depots)}")
         print(f"[OR-Tools] Customers: {len(customers)}")
         print(f"[OR-Tools] Vehicles: {len(vehicles)}")
-        print(f"[OR-Tools] Fuel price: {fuel_price} TL/L")
         
-        depot_lat = depot["location"]["lat"]
-        depot_lng = depot["location"]["lng"]
+        depot_locations = []
+        for depot in depots:
+            depot_lat = depot["location"]["lat"]
+            depot_lng = depot["location"]["lng"]
+            if not (-90 <= depot_lat <= 90) or not (-180 <= depot_lng <= 180):
+                raise ValueError(f"Invalid depot coordinates: lat={depot_lat}, lng={depot_lng}")
+            depot_locations.append((depot_lat, depot_lng))
+            print(f"[OR-Tools] Depot {depot.get('name', 'Unknown')}: ({depot_lat}, {depot_lng})")
         
-        if not (-90 <= depot_lat <= 90) or not (-180 <= depot_lng <= 180):
-            raise ValueError(f"Invalid depot coordinates: lat={depot_lat}, lng={depot_lng}")
+        # Locations: depots + customers
+        locations = depot_locations.copy()
         
-        print(f"[OR-Tools] Depot coordinates: ({depot_lat}, {depot_lng})")
-        
-        locations = [(depot_lat, depot_lng)]
-        demands = [0]
+        demands = [0] * len(depots)
         
         for i, customer in enumerate(customers):
             lat = customer["location"]["lat"]
@@ -113,7 +115,7 @@ def optimize_routes(depot: dict, customers: list, vehicles: list, fuel_price: fl
             distance_matrix.append(row)
         
         print(f"[OR-Tools] Distance matrix size: {len(distance_matrix)}x{len(distance_matrix[0])}")
-        print(f"[OR-Tools] Sample distances from depot: {distance_matrix[0][:5]}")
+        print(f"[OR-Tools] Sample distances from first depot: {distance_matrix[0][:5]}")
         
         vehicle_capacities = []
         for v in vehicles:
@@ -133,9 +135,9 @@ def optimize_routes(depot: dict, customers: list, vehicles: list, fuel_price: fl
             raise ValueError(f"Total demand ({total_demand}) exceeds total capacity ({total_capacity})")
         
         print(f"[OR-Tools] Creating RoutingIndexManager...")
-        print(f"[OR-Tools] Parameters: locations={num_locations}, vehicles={num_vehicles}, depot=0")
+        print(f"[OR-Tools] Parameters: locations={num_locations}, vehicles={num_vehicles}, depots={depots}")
         
-        manager = pywrapcp.RoutingIndexManager(num_locations, num_vehicles, 0)
+        manager = pywrapcp.RoutingIndexManager(num_locations, num_vehicles, [i for i in range(len(depots))])
         print(f"[OR-Tools] RoutingIndexManager created")
         
         print(f"[OR-Tools] Creating RoutingModel...")
@@ -197,7 +199,7 @@ def optimize_routes(depot: dict, customers: list, vehicles: list, fuel_price: fl
             raise Exception(f"ROUTING_INVALID - Model initialization failed. Details: Locations: {num_locations}; Vehicles: {num_vehicles}; Total demand: {total_demand} pallets; Total capacity: {total_capacity} pallets; Demand/Capacity ratio: {total_demand/total_capacity:.2f}")
         
         # Servis süreleri
-        service_times = [0]  # Depo
+        service_times = [0] * len(depots)  # Depolar için servis süresi 0
         for customer in customers:
             business = customer.get("business_type", "default")
             service_times.append(SERVICE_TIMES.get(business, SERVICE_TIMES["default"]))
@@ -214,8 +216,8 @@ def optimize_routes(depot: dict, customers: list, vehicles: list, fuel_price: fl
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 
-                if node_index > 0:  # Depo değilse
-                    customer = customers[node_index - 1]
+                if node_index >= len(depots):  # Depo değilse
+                    customer = customers[node_index - len(depots)]
                     route_stops.append({
                         "customer_id": customer["id"],
                         "customer_name": customer["name"],
