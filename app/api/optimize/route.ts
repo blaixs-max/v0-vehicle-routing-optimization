@@ -518,10 +518,35 @@ async function optimizeWithRailway(
       }
     }
 
+    // Railway underscore kullanıyor: vehicle_id, depot_id
+    // Frontend camelCase bekliyor: vehicleId, depotId
+    const formattedRoutes = railwayResult.routes.map((route: any) => ({
+      vehicleId: route.vehicle_id || route.vehicleId,
+      vehiclePlate: route.vehicle_plate || route.vehiclePlate || "Bilinmeyen Araç",
+      vehicleType: route.vehicle_type || route.vehicleType || "truck",
+      depotId: route.depot_id || route.depotId,
+      depotName: route.depot_name || route.depotName || "Depo",
+      stops: route.stops || [],
+      totalDistance: route.total_distance_km || route.totalDistance || 0,
+      totalDuration: route.total_duration_min || route.totalDuration || 0,
+      fuelCost: route.fuel_cost || route.fuelCost || 0,
+      fixedCost: route.fixed_cost || route.fixedCost || 0,
+      distanceCost: route.distance_cost || route.distanceCost || 0,
+      tollCost: route.toll_cost || route.tollCost || 0,
+      totalCost: route.total_cost || route.totalCost || 0,
+      totalLoad: route.total_load || route.totalLoad || 0,
+      capacityUtilization: route.capacity_utilization || route.capacityUtilization || 0,
+    }))
+
+    console.log("[v0] Formatted routes count:", formattedRoutes.length)
+    if (formattedRoutes.length > 0) {
+      console.log("[v0] First formatted route:", JSON.stringify(formattedRoutes[0], null, 2))
+    }
+
     // Geometry and cost calculation for each route
     const client = new ORSClient(ORS_API_KEY!)
-    for (const route of railwayResult.routes) {
-      console.log("[v0] Processing route:", route.vehicleId || route.vehicle_id, "stops:", route.stops?.length)
+    for (const route of formattedRoutes) {
+      console.log("[v0] Processing route:", route.vehicleId, "stops:", route.stops?.length)
 
       if (!route || typeof route !== "object") {
         console.warn("[v0] Invalid route object, skipping")
@@ -582,7 +607,7 @@ async function optimizeWithRailway(
 
     return NextResponse.json({
       success: true,
-      routes: railwayResult.routes,
+      routes: formattedRoutes,
       summary: railwayResult.summary,
       algorithm: "ortools",
     })
