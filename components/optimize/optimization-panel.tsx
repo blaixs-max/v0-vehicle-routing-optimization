@@ -199,25 +199,34 @@ export function OptimizationPanel() {
     try {
       const apiEndpoint = "/api/optimize"
       console.log("[v0] Calling API:", apiEndpoint)
+
+      const depotsData = selectedDepots.map((id) => depots.find((d) => d.id === id)).filter(Boolean)
+      const vehiclesData = vehicles.filter((v) => v.status === "available")
+      const customersData = customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
+
+      console.log("[v0] Depots data:", depotsData)
+      console.log("[v0] Vehicles data:", vehiclesData)
+      console.log("[v0] Customers data:", customersData)
+
       console.log("[v0] Request body:", {
-        depotsCount: selectedDepots.length,
-        vehiclesCount: vehicles.filter((v) => v.status === "available").length,
-        customersCount: customersToOptimize.length,
+        depotsCount: depotsData.length,
+        vehiclesCount: vehiclesData.length,
+        customersCount: customersData.length,
       })
 
       const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          depots: selectedDepots.map((id) => depots.find((d) => d.id === id)).filter(Boolean),
-          vehicles: vehicles.filter((v) => v.status === "available"),
-          customers: customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean),
+          depots: depotsData,
+          vehicles: vehiclesData,
+          customers: customersData,
           options: {
             fuelPrice,
             maxRouteDistance,
             maxRouteDuration,
             useRealDistances,
-            algorithm, // Algoritma parametresini gönder
+            algorithm,
           },
         }),
       })
