@@ -372,21 +372,10 @@ async function optimizeWithRailway(
 
   const customersToOptimize = validCustomers
 
-  const selectedDepot = depots[0]
-  if (!selectedDepot) {
-    throw new Error("En az bir depo gereklidir")
-  }
-
-  console.log("[v0] Primary depot:", selectedDepot.name, selectedDepot.lat, selectedDepot.lng)
-  console.log("[v0] Customers to optimize:", customersToOptimize.length)
-  console.log("[v0] Sample customer:", customersToOptimize[0])
-  console.log("[v0] Vehicles:", vehicles.length)
-  console.log("[v0] Sample vehicle:", vehicles[0])
-
   const railwayRequest = {
     depots: depots.map((d) => ({
       id: d.id,
-      name: d.name || d.city || `Depo ${d.id}`,
+      name: d.name,
       location: {
         lat: d.lat,
         lng: d.lng,
@@ -418,10 +407,8 @@ async function optimizeWithRailway(
   }
 
   console.log("[v0] Railway request prepared")
-  console.log("[v0] Depots:", railwayRequest.depots)
-  console.log("[v0] Customers count:", railwayRequest.customers.length)
-  console.log("[v0] Vehicles count:", railwayRequest.vehicles.length)
-  console.log("[v0] Fuel price:", railwayRequest.fuel_price)
+  console.log("[v0] Depots:", railwayRequest.depots.length)
+  console.log("[v0] Customers to optimize:", customersToOptimize.length)
 
   try {
     const controller = new AbortController()
@@ -429,7 +416,7 @@ async function optimizeWithRailway(
 
     console.log("[v0] Calling Railway API:", RAILWAY_API_URL)
     console.log("[v0] Request body sample:", {
-      depotsCount: railwayRequest.depots.length,
+      depotCount: railwayRequest.depots.length,
       customersCount: railwayRequest.customers.length,
       vehiclesCount: railwayRequest.vehicles.length,
     })
@@ -489,7 +476,7 @@ async function optimizeWithRailway(
         const vehicleName = vehicle?.plate || vehicle?.name || `Araç ${vehicleId}`
 
         const firstStop = route.stops?.[0]
-        let depot = selectedDepot
+        let depot = depots[0]
 
         if (firstStop && depots.length > 1) {
           const firstStopLat = firstStop.location?.lat || 0

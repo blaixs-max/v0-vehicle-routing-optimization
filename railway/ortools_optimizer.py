@@ -76,7 +76,7 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
             if not (-90 <= depot_lat <= 90) or not (-180 <= depot_lng <= 180):
                 raise ValueError(f"Invalid depot coordinates: lat={depot_lat}, lng={depot_lng}")
             depot_locations.append((depot_lat, depot_lng))
-            print(f"[OR-Tools] Depot {depot.get('name', 'Unknown')}: ({depot_lat}, {depot_lng})")
+            print(f"[OR-Tools] Depot {depot.get('name', depot.get('id', 'Unknown'))}: ({depot_lat}, {depot_lng})")
         
         # Locations: depots + customers
         locations = depot_locations.copy()
@@ -108,14 +108,13 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
                     row.append(0)
                 else:
                     dist = haversine_distance(loc1[0], loc1[1], loc2[0], loc2[1])
-                    if dist < 0 or dist > 20000:  # 20000 km sanity check
+                    if dist < 0 or dist > 20000:
                         print(f"[OR-Tools] WARNING: Suspicious distance between {i} and {j}: {dist}km")
                         dist = max(1, min(dist, 20000))
-                    row.append(int(dist * 1000))  # meters to integer
+                    row.append(int(dist * 1000))
             distance_matrix.append(row)
         
         print(f"[OR-Tools] Distance matrix size: {len(distance_matrix)}x{len(distance_matrix[0])}")
-        print(f"[OR-Tools] Sample distances from first depot: {distance_matrix[0][:5]}")
         
         vehicle_capacities = []
         for v in vehicles:
@@ -135,10 +134,16 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
             raise ValueError(f"Total demand ({total_demand}) exceeds total capacity ({total_capacity})")
         
         print(f"[OR-Tools] Creating RoutingIndexManager...")
-        print(f"[OR-Tools] Parameters: locations={num_locations}, vehicles={num_vehicles}, depots={depots}")
+        depot_indices = list(range(len(depots)))
+        print(f"[OR-Tools] Depot indices: {depot_indices}")
         
-        manager = pywrapcp.RoutingIndexManager(num_locations, num_vehicles, [i for i in range(len(depots))])
-        print(f"[OR-Tools] RoutingIndexManager created")
+        manager = pywrapcp.RoutingIndexManager(
+            num_locations,
+            num_vehicles,
+            depot_indices,  # start depots
+            depot_indices   # end depots (vehicles return to same depot)
+        )
+        print(f"[OR-Tools] RoutingIndexManager created with {len(depots)} depots")
         
         print(f"[OR-Tools] Creating RoutingModel...")
         routing = pywrapcp.RoutingModel(manager)
@@ -213,10 +218,14 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
             route_distance = 0
             route_stops = []
             
+            start_node = manager.IndexToNode(index)
+            vehicle_depot_index = start_node if start_node < len(depots) else 0
+            vehicle_depot = depots[vehicle_depot_index]
+            
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 
-                if node_index >= len(depots):  # Depo değilse
+                if node_index >= len(depots):
                     customer = customers[node_index - len(depots)]
                     route_stops.append({
                         "customer_id": customer["id"],
@@ -235,20 +244,20 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
                 vehicle = vehicles[vehicle_id]
                 fuel_consumption = VEHICLE_TYPES[vehicle["type"]]["fuel"]
                 
-                # Estimate duration: 60 km/h average speed + service time
-                route_duration_minutes = (route_distance_km / 60) * 60  # hours * 60 = minutes
+                route_duration_minutes = (route_distance_km / 60) * 60
                 route_duration_minutes += sum(s["service_time"] for s in route_stops)
                 
-                # Calculate all cost components
                 fuel_cost = (route_distance_km / 100) * fuel_consumption * fuel_price
-                distance_cost = route_distance_km * 2.5  # 2.5 TL per km
-                fixed_cost = 500.0  # Fixed cost per route
-                toll_cost = route_distance_km * 0.5  # Estimated toll: 0.5 TL per km
+                distance_cost = route_distance_km * 2.5
+                fixed_cost = 500.0
+                toll_cost = route_distance_km * 0.5
                 total_cost = fuel_cost + distance_cost + fixed_cost + toll_cost
                 
                 routes.append({
                     "vehicle_id": vehicle["id"],
                     "vehicle_type": vehicle["type"],
+                    "depot_id": vehicle_depot["id"],
+                    "depot_name": vehicle_depot.get("name", vehicle_depot["id"]),
                     "stops": route_stops,
                     "distance_km": round(route_distance_km, 2),
                     "duration_minutes": round(route_duration_minutes, 2),

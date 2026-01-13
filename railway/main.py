@@ -48,7 +48,7 @@ class Depot(BaseModel):
 class OptimizeRequest(BaseModel):
     customers: List[Customer]
     vehicles: List[Vehicle]
-    depot: Depot
+    depots: List[Depot]
     fuel_price: float = 47.50
 
 class OptimizeResponse(BaseModel):
@@ -76,7 +76,7 @@ def optimize(request: OptimizeRequest):
         result = optimize_routes(
             customers=[c.dict() for c in request.customers],
             vehicles=[v.dict() for v in request.vehicles],
-            depot=request.depot.dict(),
+            depots=[d.dict() for d in request.depots],
             fuel_price=request.fuel_price
         )
         
