@@ -496,23 +496,23 @@ async function optimizeWithRailway(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { selectedDepots, selectedCustomers, selectedVehicles, algorithm = "ortools", options } = body
+    const { depots, vehicles, customers, algorithm = "ortools", options } = body
 
     console.log("[v0] === POST /api/optimize ===")
     console.log("[v0] Algorithm:", algorithm)
-    console.log("[v0] Selected depots:", selectedDepots?.length)
-    console.log("[v0] Selected customers:", selectedCustomers?.length)
-    console.log("[v0] Customers to optimize:", options?.customersToOptimize)
+    console.log("[v0] Selected depots:", depots)
+    console.log("[v0] Selected customers:", customers)
+    console.log("[v0] Options:", options)
 
-    if (!selectedDepots || selectedDepots.length === 0) {
+    if (!depots || depots.length === 0) {
       return NextResponse.json({ error: "En az bir depo gereklidir" }, { status: 400 })
     }
 
-    if (!selectedVehicles || selectedVehicles.length === 0) {
+    if (!vehicles || vehicles.length === 0) {
       return NextResponse.json({ error: "En az bir araç gereklidir" }, { status: 400 })
     }
 
-    if (!selectedCustomers || selectedCustomers.length === 0) {
+    if (!customers || customers.length === 0) {
       return NextResponse.json({ error: "En az bir müşteri gereklidir" }, { status: 400 })
     }
 
@@ -530,9 +530,9 @@ export async function POST(request: NextRequest) {
 
     let result
     if (algorithm === "ors") {
-      result = await optimizeWithORS(selectedDepots, selectedVehicles, selectedCustomers, options)
+      result = await optimizeWithORS(depots, vehicles, customers, options)
     } else if (algorithm === "ortools") {
-      result = await optimizeWithRailway(selectedDepots, selectedVehicles, selectedCustomers, options)
+      result = await optimizeWithRailway(depots, vehicles, customers, options)
     } else {
       return NextResponse.json({ error: "Desteklenmeyen optimizasyon algoritması" }, { status: 400 })
     }
