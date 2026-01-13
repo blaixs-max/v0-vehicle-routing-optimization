@@ -232,14 +232,29 @@ def optimize_routes(depot: dict, customers: list, vehicles: list, fuel_price: fl
                 route_distance_km = route_distance / 1000
                 vehicle = vehicles[vehicle_id]
                 fuel_consumption = VEHICLE_TYPES[vehicle["type"]]["fuel"]
+                
+                # Estimate duration: 60 km/h average speed + service time
+                route_duration_minutes = (route_distance_km / 60) * 60  # hours * 60 = minutes
+                route_duration_minutes += sum(s["service_time"] for s in route_stops)
+                
+                # Calculate all cost components
                 fuel_cost = (route_distance_km / 100) * fuel_consumption * fuel_price
+                distance_cost = route_distance_km * 2.5  # 2.5 TL per km
+                fixed_cost = 500.0  # Fixed cost per route
+                toll_cost = route_distance_km * 0.5  # Estimated toll: 0.5 TL per km
+                total_cost = fuel_cost + distance_cost + fixed_cost + toll_cost
                 
                 routes.append({
                     "vehicle_id": vehicle["id"],
                     "vehicle_type": vehicle["type"],
                     "stops": route_stops,
                     "distance_km": round(route_distance_km, 2),
+                    "duration_minutes": round(route_duration_minutes, 2),
                     "fuel_cost": round(fuel_cost, 2),
+                    "distance_cost": round(distance_cost, 2),
+                    "fixed_cost": round(fixed_cost, 2),
+                    "toll_cost": round(toll_cost, 2),
+                    "total_cost": round(total_cost, 2),
                     "total_pallets": sum(s["demand"] for s in route_stops)
                 })
                 
