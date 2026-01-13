@@ -302,17 +302,17 @@ async function optimizeWithORS(
 }
 
 async function optimizeWithRailway(
-  selectedDepots: Depot[],
-  selectedVehicles: Vehicle[],
-  selectedCustomers: Customer[],
+  selectedDepots: any[],
+  vehicles: any[],
+  customers: any[],
   options: any,
-) {
+): Promise<any> {
   console.log("[v0] === Railway OR-Tools Optimization ===")
   console.log("[v0] Railway URL:", RAILWAY_API_URL)
   console.log("[v0] Request data:", {
     depots: selectedDepots.length,
-    vehicles: selectedVehicles.length,
-    customers: selectedCustomers.length,
+    vehicles: vehicles.length,
+    customers: customers.length,
   })
 
   if (!selectedDepots || selectedDepots.length === 0) {
@@ -326,7 +326,7 @@ async function optimizeWithRailway(
 
   console.log("[v0] Primary depot:", primaryDepot.id, "at", primaryDepot.lat, primaryDepot.lng)
 
-  const validCustomers = selectedCustomers.filter((c) => {
+  const validCustomers = customers.filter((c) => {
     const hasValidCoords = c.lat && c.lng && c.lat !== 0 && c.lng !== 0
     if (!hasValidCoords) {
       console.warn(`[v0] Invalid coordinates for customer ${c.id}: lat=${c.lat}, lng=${c.lng}`)
@@ -338,7 +338,7 @@ async function optimizeWithRailway(
     throw new Error("Geçerli koordinatlara sahip müşteri bulunamadı")
   }
 
-  console.log("[v0] Valid customers:", validCustomers.length, "/ Total:", selectedCustomers.length)
+  console.log("[v0] Valid customers:", validCustomers.length, "/ Total:", customers.length)
 
   const customersToOptimize =
     options?.customersToOptimize && options.customersToOptimize.length > 0
@@ -418,7 +418,7 @@ async function optimizeWithRailway(
       time_constraints: c.special_constraint || c.time_constraints || null,
       required_vehicle_types: c.required_vehicle_type ? [c.required_vehicle_type] : null,
     })),
-    vehicles: selectedVehicles.map((v: any) => ({
+    vehicles: vehicles.map((v: any) => ({
       id: v.id,
       type: mapVehicleTypeToInt(v.vehicle_type), // Convert to integer
       capacity_pallets: v.capacity_pallet || v.capacity_pallets || 10,
@@ -520,15 +520,30 @@ async function optimizeWithRailway(
 
     // Railway underscore kullanıyor: vehicle_id, depot_id
     // Frontend camelCase bekliyor: vehicleId, depotId
-    const formattedRoutes = railwayResult.routes.map((route: any) => ({
+    const vehicleMap = new Map(vehicles.map((v) => [v.id, v]))
+    const customerMap = new Map(customers.map((c) => [c.id, c]))
+    const depotMap = new Map(selectedDepots.map((d) => [d.id, d]))
+
+    const formattedRoutes = (railwayResult.routes || []).map((route: any) => ({
       vehicleId: route.vehicle_id || route.vehicleId,
-      vehiclePlate: route.vehicle_plate || route.vehiclePlate || "Bilinmeyen Araç",
-      vehicleType: route.vehicle_type || route.vehicleType || "truck",
+      vehicleName: vehicleMap.get(route.vehicle_id || route.vehicleId)?.name || "Bilinmeyen Araç",
+      vehicleType: vehicleMap.get(route.vehicle_id || route.vehicleId)?.type || "truck",
       depotId: route.depot_id || route.depotId,
-      depotName: route.depot_name || route.depotName || "Depo",
-      stops: route.stops || [],
-      totalDistance: route.total_distance_km || route.totalDistance || 0,
-      totalDuration: route.total_duration_min || route.totalDuration || 0,
+      depotName: depotMap.get(route.depot_id || route.depotId)?.name || "Depo",
+      stops: (route.stops || []).map((stop: any) => {
+        const customerId = stop.customer_id || stop.customerId
+        const customer = customerMap.get(customerId)
+
+        return {
+          customerId: customerId,
+          customerName: customer?.name || stop.customer_name || `Müşteri ${customerId}`,
+          location: stop.location || { lat: stop.lat, lng: stop.lng },
+          demand: stop.demand || stop.demand_pallets || 0,
+          serviceTime: stop.service_time || 0,
+        }
+      }),
+      totalDistance: route.total_distance_km || route.distance_km || route.totalDistance || 0,
+      totalDuration: route.total_duration_min || route.duration_min || route.totalDuration || 0,
       fuelCost: route.fuel_cost || route.fuelCost || 0,
       fixedCost: route.fixed_cost || route.fixedCost || 0,
       distanceCost: route.distance_cost || route.distanceCost || 0,
@@ -540,7 +555,15 @@ async function optimizeWithRailway(
 
     console.log("[v0] Formatted routes count:", formattedRoutes.length)
     if (formattedRoutes.length > 0) {
-      console.log("[v0] First formatted route:", JSON.stringify(formattedRoutes[0], null, 2))
+      console.log("[v0] First formatted route sample:", {
+        vehicleId: formattedRoutes[0].vehicleId,
+        vehicleName: formattedRoutes[0].vehicleName,
+        depotName: formattedRoutes[0].depotName,
+        stopsCount: formattedRoutes[0].stops?.length,
+        firstCustomer: formattedRoutes[0].stops?.[0]?.customerName,
+        totalDistance: formattedRoutes[0].totalDistance,
+        totalCost: formattedRoutes[0].totalCost,
+      })
     }
 
     // Geometry and cost calculation for each route
@@ -564,7 +587,7 @@ async function optimizeWithRailway(
       }
 
       // Rota noktaları: depot -> stops -> depot
-      const depot = selectedDepots.find((d) => d.id === route.depotId)
+      const depot = depotMap.get(route.depotId)
       if (!depot) {
         console.warn("[v0] Depot not found for route:", route.depotId)
         continue
@@ -605,18 +628,29 @@ async function optimizeWithRailway(
       }
     }
 
+    const summary = {
+      totalRoutes: formattedRoutes.length,
+      totalDistance:
+        railwayResult.summary?.total_distance_km || formattedRoutes.reduce((sum, r) => sum + (r.totalDistance || 0), 0),
+      totalDuration:
+        railwayResult.summary?.total_duration_min ||
+        formattedRoutes.reduce((sum, r) => sum + (r.totalDuration || 0), 0),
+      totalCost: formattedRoutes.reduce((sum, r) => sum + (r.totalCost || 0), 0),
+      fuelCost: formattedRoutes.reduce((sum, r) => sum + (r.fuelCost || 0), 0),
+      fixedCost: formattedRoutes.reduce((sum, r) => sum + (r.fixedCost || 0), 0),
+      distanceCost: formattedRoutes.reduce((sum, r) => sum + (r.distanceCost || 0), 0),
+      tollCost: formattedRoutes.reduce((sum, r) => sum + (r.tollCost || 0), 0),
+      unassignedCount: railwayResult.summary?.unassigned_customers || 0,
+      computationTimeMs: railwayResult.computation_time_ms || railwayResult.summary?.computation_time_ms || 0,
+    }
+
+    console.log("[v0] Final summary:", summary)
+
     return {
       success: true,
       provider: "ortools-railway",
       routes: formattedRoutes,
-      summary: railwayResult.summary || {
-        totalRoutes: formattedRoutes.length,
-        totalDistance: formattedRoutes.reduce((sum, r) => sum + (r.totalDistance || 0), 0),
-        totalDuration: formattedRoutes.reduce((sum, r) => sum + (r.totalDuration || 0), 0),
-        totalCost: formattedRoutes.reduce((sum, r) => sum + (r.totalCost || 0), 0),
-        unassignedCount: 0,
-        computationTimeMs: railwayResult.computation_time_ms || 0,
-      },
+      summary: summary,
       algorithm: "ortools",
     }
   } catch (fetchError: any) {
