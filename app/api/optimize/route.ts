@@ -481,15 +481,28 @@ async function optimizeWithRailway(
     // Geometry and cost calculation for each route
     const client = new ORSClient(ORS_API_KEY!)
     for (const route of railwayResult.routes) {
-      if (!route.stops || route.stops.length === 0) continue
+      if (!route.stops || !Array.isArray(route.stops) || route.stops.length === 0) {
+        console.warn("[v0] Route has no stops:", route)
+        continue
+      }
 
       // Rota noktaları: depot -> stops -> depot
       const depot = selectedDepots.find((d) => d.id === route.depotId)
-      if (!depot) continue
+      if (!depot) {
+        console.warn("[v0] Depot not found for route:", route.depotId)
+        continue
+      }
 
       const routePoints = [
         { lat: depot.lat, lng: depot.lng },
-        ...route.stops.map((s: any) => ({ lat: s.lat, lng: s.lng })),
+        ...route.stops.map((s: any) => {
+          // Railway sends location as {lat, lng} object
+          if (s.location && typeof s.location === "object") {
+            return { lat: s.location.lat, lng: s.location.lng }
+          }
+          // Fallback if lat/lng are direct properties
+          return { lat: s.lat, lng: s.lng }
+        }),
         { lat: depot.lat, lng: depot.lng },
       ]
 
