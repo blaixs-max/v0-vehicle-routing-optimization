@@ -162,15 +162,6 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
     print(f"[OR-Tools] Distance matrix built successfully")
     print(f"[OR-Tools] Sample distances (km): 0->1: {distance_matrix[0][1]/1000:.2f}, 1->2: {distance_matrix[1][2]/1000:.2f}")
     
-    # Zaman matrisi (dakika) - 50 km/h ortalama hız
-    time_matrix = []
-    for i in range(num_locations):
-        row = []
-        for j in range(num_locations):
-            time_minutes = int((distance_matrix[i][j] / 1000) / 50 * 60)
-            row.append(time_minutes)
-        time_matrix.append(row)
-    
     # Talep (palet)
     demands = [0]  # Depo talebi 0
     total_demand = 0
@@ -236,22 +227,6 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
         'Capacity'
     )
     
-    # Zaman kısıtı
-    def time_callback(from_index, to_index):
-        from_node = manager.IndexToNode(from_index)
-        to_node = manager.IndexToNode(to_index)
-        return time_matrix[from_node][to_node] + service_times[from_node]
-    
-    time_callback_index = routing.RegisterTransitCallback(time_callback)
-    
-    routing.AddDimension(
-        time_callback_index,
-        90,  # Slack time (dakika) - mola için
-        780,  # Max rota süresi (13 saat = 780 dakika) - 9h sürüş + 45dk mola + servisler
-        False,  # Don't force start cumul to zero
-        'Time'
-    )
-    
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
@@ -260,7 +235,6 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     )
     search_parameters.time_limit.seconds = 30
-    
     search_parameters.log_search = True
     
     print("[OR-Tools] Starting solver...")
@@ -303,12 +277,10 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
     # Sonuçları parse et
     routes = []
     total_distance = 0
-    total_time = 0
     
     for vehicle_id in range(num_vehicles):
         index = routing.Start(vehicle_id)
         route_distance = 0
-        route_time = 0
         route_stops = []
         
         while not routing.IsEnd(index):
@@ -344,7 +316,6 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
             })
             
             total_distance += route_distance_km
-            total_time += route_time
     
     print(f"[OR-Tools] Generated {len(routes)} routes")
     print(f"[OR-Tools] Total distance: {round(total_distance, 2)} km")
