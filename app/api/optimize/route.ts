@@ -490,9 +490,32 @@ async function optimizeWithRailway(
         const depotId = route.depot_id || route.depotId || selectedDepot.id
         const depot = depotMap.get(depotId) || selectedDepot
 
-        const stops = (route.stops || []).map((stop: any) => {
+        const stops = (route.stops || []).map((stop: any, index: number) => {
           const customerId = stop.customer_id || stop.customerId
           const customer = customerMap.get(customerId)
+
+          // Distance from previous stop - Railway'den 0 gelirse hesapla
+          let distanceFromPrev = stop.distance_from_prev || stop.distanceFromPrev || 0
+
+          if (distanceFromPrev === 0 && index > 0) {
+            const prevStop = route.stops[index - 1]
+            const prevLat = prevStop.location?.lat || 0
+            const prevLng = prevStop.location?.lng || 0
+            const currLat = stop.location?.lat || customer?.lat || 0
+            const currLng = stop.location?.lng || customer?.lng || 0
+
+            if (prevLat && prevLng && currLat && currLng) {
+              distanceFromPrev = haversineDistance(prevLat, prevLng, currLat, currLng)
+            }
+          } else if (distanceFromPrev === 0 && index === 0) {
+            // First stop - distance from depot
+            const currLat = stop.location?.lat || customer?.lat || 0
+            const currLng = stop.location?.lng || customer?.lng || 0
+
+            if (depot.lat && depot.lng && currLat && currLng) {
+              distanceFromPrev = haversineDistance(depot.lat, depot.lng, currLat, currLng)
+            }
+          }
 
           return {
             customerId,
@@ -503,7 +526,7 @@ async function optimizeWithRailway(
             stopOrder: stop.stop_order || stop.stopOrder || 0,
             arrivalTime: stop.arrival_time || 0,
             serviceTime: stop.service_time || stop.serviceTime || 15,
-            distanceFromPrev: stop.distance_from_prev || 0,
+            distanceFromPrev: Math.round(distanceFromPrev * 10) / 10,
             demand: stop.demand || customer?.demand_pallet || 1,
             cumulativeLoad: stop.cumulative_load || 0,
           }
@@ -542,6 +565,10 @@ async function optimizeWithRailway(
     const totalDistance = formattedRoutes.reduce((sum, r) => sum + (r.totalDistance || 0), 0)
     const totalDuration = formattedRoutes.reduce((sum, r) => sum + (r.totalDuration || 0), 0)
     const totalCost = formattedRoutes.reduce((sum, r) => sum + (r.totalCost || 0), 0)
+    const totalFuelCost = formattedRoutes.reduce((sum, r) => sum + (r.fuelCost || 0), 0)
+    const totalFixedCost = formattedRoutes.reduce((sum, r) => sum + (r.fixedCost || 0), 0)
+    const totalDistanceCost = formattedRoutes.reduce((sum, r) => sum + (r.distanceCost || 0), 0)
+    const totalTollCost = formattedRoutes.reduce((sum, r) => sum + (r.tollCost || 0), 0)
 
     return {
       success: true,
@@ -552,6 +579,10 @@ async function optimizeWithRailway(
         totalDistance: Math.round(totalDistance * 100) / 100,
         totalDuration: Math.round(totalDuration),
         totalCost: Math.round(totalCost * 100) / 100,
+        fuelCost: Math.round(totalFuelCost * 100) / 100,
+        fixedCost: Math.round(totalFixedCost * 100) / 100,
+        distanceCost: Math.round(totalDistanceCost * 100) / 100,
+        tollCost: Math.round(totalTollCost * 100) / 100,
         unassignedCount: 0,
       },
       routes: formattedRoutes,
