@@ -98,11 +98,21 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
     
     # Talep (palet)
     demands = [0]  # Depo talebi 0
+    total_demand = 0
     for customer in customers:
-        demands.append(customer["demand_pallets"])
+        demand = customer["demand_pallets"]
+        demands.append(demand)
+        total_demand += demand
+    
+    print(f"[OR-Tools] Total demand: {total_demand} pallets")
     
     # Araç kapasiteleri
     vehicle_capacities = [v["capacity_pallets"] for v in vehicles]
+    total_capacity = sum(vehicle_capacities)
+    
+    print(f"[OR-Tools] Total vehicle capacity: {total_capacity} pallets")
+    if total_demand > total_capacity:
+        print(f"[OR-Tools] WARNING: Demand exceeds capacity!")
     
     # Servis süreleri
     service_times = [0]  # Depo
@@ -144,15 +154,15 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
         return time_matrix[from_node][to_node] + service_times[from_node]
     
     time_callback_index = routing.RegisterTransitCallback(time_callback)
+    
     routing.AddDimension(
         time_callback_index,
-        45,  # Mola süresi (dakika)
-        600,  # Max rota süresi (10 saat = 600 dakika)
+        90,  # Slack time (dakika) - mola için
+        780,  # Max rota süresi (13 saat = 780 dakika) - 9h sürüş + 45dk mola + servisler
         False,  # Don't force start cumul to zero
         'Time'
     )
     
-    # Çözüm parametreleri
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
@@ -160,13 +170,34 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     )
-    search_parameters.time_limit.seconds = 30
+    search_parameters.time_limit.seconds = 120
+    
+    search_parameters.log_search = True
+    
+    print("[OR-Tools] Starting solver...")
     
     # Çözümü bul
     solution = routing.SolveWithParameters(search_parameters)
     
     if not solution:
-        raise Exception("No solution found")
+        print("[OR-Tools] No solution found!")
+        print(f"[OR-Tools] Status: {routing.status()}")
+        
+        # Status kodları
+        status_messages = {
+            0: "ROUTING_NOT_SOLVED",
+            1: "ROUTING_SUCCESS",
+            2: "ROUTING_FAIL",
+            3: "ROUTING_FAIL_TIMEOUT",
+            4: "ROUTING_INVALID"
+        }
+        
+        status_msg = status_messages.get(routing.status(), "UNKNOWN")
+        print(f"[OR-Tools] Status message: {status_msg}")
+        
+        raise Exception(f"No solution found. Status: {status_msg}")
+    
+    print(f"[OR-Tools] Solution found! Objective value: {solution.ObjectiveValue()}")
     
     # Sonuçları parse et
     routes = []
@@ -213,6 +244,9 @@ def optimize_routes(customers: List[dict], vehicles: List[dict], depot: dict, fu
             
             total_distance += route_distance_km
             total_time += route_time
+    
+    print(f"[OR-Tools] Generated {len(routes)} routes")
+    print(f"[OR-Tools] Total distance: {round(total_distance, 2)} km")
     
     return {
         "routes": routes,
