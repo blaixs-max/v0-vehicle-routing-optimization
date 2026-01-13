@@ -479,9 +479,24 @@ async function optimizeWithRailway(
       console.log("[v0] First route structure:", JSON.stringify(railwayResult.routes[0], null, 2))
     }
 
-    if (!railwayResult.routes || !Array.isArray(railwayResult.routes)) {
-      console.error("[v0] Railway returned invalid routes:", railwayResult)
-      throw new Error("Railway API returned invalid response: routes missing or not an array")
+    console.log("[v0] Railway response received:", JSON.stringify(railwayResult, null, 2))
+    console.log(
+      "[v0] Railway routes type:",
+      typeof railwayResult.routes,
+      "IsArray:",
+      Array.isArray(railwayResult.routes),
+    )
+
+    if (!railwayResult || typeof railwayResult !== "object") {
+      throw new Error("Railway returned invalid response (not an object)")
+    }
+
+    if (!railwayResult.routes) {
+      throw new Error("Railway response missing routes field")
+    }
+
+    if (!Array.isArray(railwayResult.routes)) {
+      throw new Error("Railway routes is not an array")
     }
 
     // Routes array boş olabilir kontrolü ekleniyor
@@ -508,9 +523,18 @@ async function optimizeWithRailway(
     for (const route of railwayResult.routes) {
       console.log("[v0] Processing route:", route.vehicleId || route.vehicle_id, "stops:", route.stops?.length)
 
-      if (!route.stops || !Array.isArray(route.stops) || route.stops.length === 0) {
-        console.warn("[v0] Route has no stops, route keys:", Object.keys(route))
-        console.warn("[v0] Route full object:", JSON.stringify(route, null, 2))
+      if (!route || typeof route !== "object") {
+        console.warn("[v0] Invalid route object, skipping")
+        continue
+      }
+
+      if (!route.stops || !Array.isArray(route.stops)) {
+        console.warn("[v0] Route missing stops array, skipping:", route.vehicleId)
+        continue
+      }
+
+      if (route.stops.length === 0) {
+        console.warn("[v0] Route has empty stops, skipping:", route.vehicleId)
         continue
       }
 
