@@ -411,6 +411,9 @@ async function optimizeWithRailway(
   console.log("[v0] Calling Railway API:", `${RAILWAY_API_URL}/optimize`)
   console.log("[v0] Sending customers count:", railwayRequest.customers.length)
   console.log("[v0] Sending depot:", railwayRequest.depot)
+  console.log("[v0] Sample customer data:", railwayRequest.customers[0])
+  console.log("[v0] Sample vehicle data:", railwayRequest.vehicles[0])
+  console.log("[v0] Full request body:", JSON.stringify(railwayRequest, null, 2))
 
   try {
     const railwayResponse = await fetch(`${RAILWAY_API_URL}/optimize`, {
@@ -427,10 +430,13 @@ async function optimizeWithRailway(
     if (!railwayResponse.ok) {
       const errorText = await railwayResponse.text()
       console.error("[v0] Railway API error:", errorText)
-      return NextResponse.json(
-        { error: `Railway API error (${railwayResponse.status}): ${errorText}` },
-        { status: 500 },
-      )
+      try {
+        const errorJson = JSON.parse(errorText)
+        console.error("[v0] Railway validation error details:", JSON.stringify(errorJson, null, 2))
+      } catch {
+        // Not JSON, log as-is
+      }
+      throw new Error(`Railway API error (${railwayResponse.status}): ${errorText}`)
     }
 
     const railwayResult = await railwayResponse.json()
