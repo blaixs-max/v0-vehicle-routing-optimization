@@ -193,8 +193,13 @@ export function OptimizationPanel() {
     setProgress(0)
 
     const progressInterval = setInterval(() => {
-      setProgress((p) => Math.min(p + 10, 90))
-    }, 500)
+      setProgress((p) => {
+        if (p < 30) return p + 5 // İlk 30% hızlı
+        if (p < 70) return p + 2 // Orta kısım yavaş (Railway processing)
+        if (p < 90) return p + 1 // Son kısım çok yavaş
+        return p
+      })
+    }, 1000) // 1 saniye interval
 
     try {
       const apiEndpoint = "/api/optimize"
@@ -204,15 +209,14 @@ export function OptimizationPanel() {
       const vehiclesData = vehicles.filter((v) => v.status === "available")
       const customersData = customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
 
-      console.log("[v0] Depots data:", depotsData)
-      console.log("[v0] Vehicles data:", vehiclesData)
-      console.log("[v0] Customers data:", customersData)
-
       console.log("[v0] Request body:", {
         depotsCount: depotsData.length,
         vehiclesCount: vehiclesData.length,
         customersCount: customersData.length,
       })
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 70000)
 
       const response = await fetch(apiEndpoint, {
         method: "POST",
@@ -229,8 +233,10 @@ export function OptimizationPanel() {
             algorithm,
           },
         }),
+        signal: controller.signal,
       })
 
+      clearTimeout(timeoutId)
       clearInterval(progressInterval)
 
       console.log("[v0] Response status:", response.status)
@@ -266,7 +272,6 @@ export function OptimizationPanel() {
         description: `${data.routes?.length || 0} rota oluşturuldu`,
       })
 
-      // Save optimized routes to localStorage for Map page
       const mockRoutes: MockRoute[] = data.routes.map((route: any, index: number) => {
         const depot = depots.find((d) => d.id === route.depotId)
         const vehicle = vehicles.find((v) => v.id === route.vehicleId)
@@ -340,9 +345,24 @@ export function OptimizationPanel() {
       }
 
       saveOptimizedRoutes(mockRoutes, summaryData, data.provider || "openrouteservice")
-    } catch (err) {
+    } catch (err: any) {
       clearInterval(progressInterval)
-      setOptimizeError(err instanceof Error ? err.message : "Bilinmeyen hata")
+
+      if (err.name === "AbortError") {
+        setOptimizeError("İstek zaman aşımına uğradı. Railway sunucusu yanıt vermedi. Lütfen tekrar deneyin.")
+        toast({
+          title: "Zaman Aşımı",
+          description: "Optimizasyon çok uzun sürdü. Lütfen tekrar deneyin veya daha az müşteri seçin.",
+          variant: "destructive",
+        })
+      } else {
+        setOptimizeError(err instanceof Error ? err.message : "Bilinmeyen hata")
+        toast({
+          title: "Hata",
+          description: err instanceof Error ? err.message : "Bilinmeyen hata",
+          variant: "destructive",
+        })
+      }
     } finally {
       setOptimizing(false)
     }
