@@ -605,12 +605,20 @@ async function optimizeWithRailway(
       }
     }
 
-    return NextResponse.json({
+    return {
       success: true,
+      provider: "ortools-railway",
       routes: formattedRoutes,
-      summary: railwayResult.summary,
+      summary: railwayResult.summary || {
+        totalRoutes: formattedRoutes.length,
+        totalDistance: formattedRoutes.reduce((sum, r) => sum + (r.totalDistance || 0), 0),
+        totalDuration: formattedRoutes.reduce((sum, r) => sum + (r.totalDuration || 0), 0),
+        totalCost: formattedRoutes.reduce((sum, r) => sum + (r.totalCost || 0), 0),
+        unassignedCount: 0,
+        computationTimeMs: railwayResult.computation_time_ms || 0,
+      },
       algorithm: "ortools",
-    })
+    }
   } catch (fetchError: any) {
     console.error("[v0] Railway fetch error:", fetchError)
 
