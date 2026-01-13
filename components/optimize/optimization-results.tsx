@@ -223,8 +223,22 @@ export function OptimizationResults({ result, depots = [] }: OptimizationResults
           <Zap className="h-4 w-4 text-green-600" />
           <span className="text-sm font-medium">Optimizasyon Tamamlandi</span>
         </div>
-        <Badge variant={result.provider === "openrouteservice" ? "default" : "secondary"} className="gap-1">
-          {result.provider === "openrouteservice" ? (
+        <Badge
+          variant={
+            result.algorithm === "ortools" || result.provider === "ortools-railway"
+              ? "default"
+              : result.provider === "openrouteservice"
+                ? "secondary"
+                : "outline"
+          }
+          className="gap-1"
+        >
+          {result.algorithm === "ortools" || result.provider === "ortools-railway" ? (
+            <>
+              <CheckCircle2 className="h-3 w-3" />
+              OR-Tools (Önerilen)
+            </>
+          ) : result.provider === "openrouteservice" ? (
             <>
               <CheckCircle2 className="h-3 w-3" />
               OpenRouteService API
