@@ -351,6 +351,32 @@ async function optimizeWithRailway(
     throw new Error("Optimize edilecek müşteri bulunamadı")
   }
 
+  const mapVehicleTypeToInt = (vehicleType: any): number => {
+    const typeStr = String(vehicleType || "").toLowerCase()
+
+    // Exact matches
+    if (typeStr === "kamyonet") return 1
+    if (typeStr === "kamyon_1" || typeStr === "kamyon-1") return 2
+    if (typeStr === "kamyon_2" || typeStr === "kamyon-2") return 3
+    if (typeStr === "tir" || typeStr === "tır") return 4
+    if (typeStr === "romork") return 5
+
+    // Partial matches for Turkish strings
+    if (typeStr.includes("kamyonet")) return 1
+    if (typeStr.includes("kamyon") && (typeStr.includes("1") || typeStr.includes("tip 1"))) return 2
+    if (typeStr.includes("kamyon") && (typeStr.includes("2") || typeStr.includes("tip 2"))) return 3
+    if (typeStr.includes("tır") || typeStr.includes("tir")) return 4
+    if (typeStr.includes("romork")) return 5
+
+    // If already a number, validate range
+    const numType = Number.parseInt(typeStr)
+    if (!isNaN(numType) && numType >= 1 && numType <= 5) return numType
+
+    // Default to type 3 (Kamyon-2)
+    console.warn(`[v0] Unknown vehicle type: ${vehicleType}, defaulting to type 3`)
+    return 3
+  }
+
   // Business type mapping
   const getBusinessType = (customer: any): string => {
     const business = customer.business_type || customer.business || ""
@@ -394,7 +420,7 @@ async function optimizeWithRailway(
     })),
     vehicles: selectedVehicles.map((v: any) => ({
       id: v.id,
-      type: v.vehicle_type || 1,
+      type: mapVehicleTypeToInt(v.vehicle_type), // Convert to integer
       capacity_pallets: v.capacity_pallet || v.capacity_pallets || 10,
       fuel_consumption: v.fuel_consumption_per_100km || 25,
     })),
@@ -413,7 +439,6 @@ async function optimizeWithRailway(
   console.log("[v0] Sending depot:", railwayRequest.depot)
   console.log("[v0] Sample customer data:", railwayRequest.customers[0])
   console.log("[v0] Sample vehicle data:", railwayRequest.vehicles[0])
-  console.log("[v0] Full request body:", JSON.stringify(railwayRequest, null, 2))
 
   try {
     const railwayResponse = await fetch(`${RAILWAY_API_URL}/optimize`, {
