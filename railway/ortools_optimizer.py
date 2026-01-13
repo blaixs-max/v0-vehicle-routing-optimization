@@ -183,19 +183,49 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             index = routing.Start(vehicle_id)
             route_distance = 0
             route_stops = []
+            stop_order = 1
+            cumulative_time = 0  # minutes from depot
+            cumulative_load = 0  # pallets
             
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 
                 if node_index > 0:  # Skip depot
                     customer = customers[node_index - 1]
+                    
+                    if route_stops:
+                        prev_loc = route_stops[-1]["location"]
+                        distance_from_prev = haversine_distance(
+                            prev_loc["lat"], prev_loc["lng"],
+                            customer["location"]["lat"], customer["location"]["lng"]
+                        )
+                        travel_time = (distance_from_prev / 60) * 60  # 60 km/h average
+                    else:
+                        # First stop - distance from depot
+                        distance_from_prev = haversine_distance(
+                            depot_lat, depot_lng,
+                            customer["location"]["lat"], customer["location"]["lng"]
+                        )
+                        travel_time = (distance_from_prev / 60) * 60
+                    
+                    cumulative_time += travel_time
+                    service_time_min = service_times[node_index]
+                    cumulative_load += customer["demand_pallets"]
+                    
                     route_stops.append({
                         "customer_id": customer["id"],
                         "customer_name": customer["name"],
                         "location": customer["location"],
                         "demand": customer["demand_pallets"],
-                        "service_time": service_times[node_index]
+                        "service_time": service_time_min,
+                        "stopOrder": stop_order,  # Stop sequence number
+                        "arrivalTime": round(cumulative_time, 1),  # Cumulative minutes from depot
+                        "cumulativeLoad": cumulative_load,  # Total pallets loaded so far
+                        "distanceFromPrev": round(distance_from_prev, 2)  # km from previous stop
                     })
+                    
+                    cumulative_time += service_time_min
+                    stop_order += 1
                 
                 previous_index = index
                 index = solution.Value(routing.NextVar(index))
@@ -423,23 +453,55 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
             index = routing.Start(vehicle_id)
             route_distance = 0
             route_stops = []
+            stop_order = 1
+            cumulative_time = 0
+            cumulative_load = 0
             
             start_node = manager.IndexToNode(index)
             vehicle_depot_index = start_node if start_node < len(depots) else 0
             vehicle_depot = depots[vehicle_depot_index]
+            depot_lat = vehicle_depot["location"]["lat"]
+            depot_lng = vehicle_depot["location"]["lng"]
             
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 
                 if node_index >= len(depots):
                     customer = customers[node_index - len(depots)]
+                    
+                    if route_stops:
+                        prev_loc = route_stops[-1]["location"]
+                        distance_from_prev = haversine_distance(
+                            prev_loc["lat"], prev_loc["lng"],
+                            customer["location"]["lat"], customer["location"]["lng"]
+                        )
+                        travel_time = (distance_from_prev / 60) * 60
+                    else:
+                        # First stop - distance from depot
+                        distance_from_prev = haversine_distance(
+                            depot_lat, depot_lng,
+                            customer["location"]["lat"], customer["location"]["lng"]
+                        )
+                        travel_time = (distance_from_prev / 60) * 60
+                    
+                    cumulative_time += travel_time
+                    service_time_min = service_times[node_index]
+                    cumulative_load += customer["demand_pallets"]
+                    
                     route_stops.append({
                         "customer_id": customer["id"],
                         "customer_name": customer["name"],
                         "location": customer["location"],
                         "demand": customer["demand_pallets"],
-                        "service_time": service_times[node_index]
+                        "service_time": service_time_min,
+                        "stopOrder": stop_order,  # Stop sequence number
+                        "arrivalTime": round(cumulative_time, 1),  # Cumulative minutes from depot
+                        "cumulativeLoad": cumulative_load,  # Total pallets loaded
+                        "distanceFromPrev": round(distance_from_prev, 2)  # km from previous
                     })
+                    
+                    cumulative_time += service_time_min
+                    stop_order += 1
                 
                 previous_index = index
                 index = solution.Value(routing.NextVar(index))
