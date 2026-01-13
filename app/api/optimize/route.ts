@@ -385,6 +385,7 @@ async function optimizeWithRailway(
 
   const railwayRequest = {
     depot: {
+      id: selectedDepot.id,
       location: {
         lat: selectedDepot.lat,
         lng: selectedDepot.lng,
@@ -392,13 +393,14 @@ async function optimizeWithRailway(
     },
     customers: customersToOptimize.map((c) => ({
       id: c.id,
+      name: c.name || c.company_name || `Müşteri ${c.id}`, // name field eklendi
       location: {
         lat: c.lat,
         lng: c.lng,
       },
-      demand_pallets: c.demand_pallet || c.demand_pallets || 1,
+      demand_pallets: c.pallet_capacity || c.demand || 5,
       business_type: c.business_type || "retail",
-      service_duration: 15,
+      service_duration: c.service_time || 15, // service_duration Railway formatında
       time_constraints: null,
       required_vehicle_types: null,
     })),
@@ -406,8 +408,9 @@ async function optimizeWithRailway(
       const vehicleType = mapVehicleTypeToInt(v.vehicle_type)
       return {
         id: v.id,
-        capacity: v.capacity_pallet || v.capacity_pallets || 12,
         type: vehicleType,
+        capacity_pallets: v.capacity_pallet || v.capacity_pallets || 12, // capacity_pallets Railway formatında
+        fuel_consumption: v.fuel_consumption || 25, // fuel_consumption eklendi (L/100km)
       }
     }),
     fuel_price: options.fuelPricePerLiter || 47.5,
