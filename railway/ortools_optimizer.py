@@ -61,13 +61,14 @@ def parse_time_constraint(constraint: str) -> tuple:
     
     return (0, 24 * 60)
 
-def optimize_routes(depot: dict, customers: list, vehicles: list) -> dict:
+def optimize_routes(depot: dict, customers: list, vehicles: list, fuel_price: float = 47.50) -> dict:
     """OR-Tools VRP optimizasyonu"""
     try:
         print(f"[OR-Tools] Starting optimization")
         print(f"[OR-Tools] Depot: {depot}")
         print(f"[OR-Tools] Customers: {len(customers)}")
         print(f"[OR-Tools] Vehicles: {len(vehicles)}")
+        print(f"[OR-Tools] Fuel price: {fuel_price} TL/L")
         
         depot_lat = depot["location"]["lat"]
         depot_lng = depot["location"]["lng"]
@@ -231,7 +232,6 @@ def optimize_routes(depot: dict, customers: list, vehicles: list) -> dict:
                 route_distance_km = route_distance / 1000
                 vehicle = vehicles[vehicle_id]
                 fuel_consumption = VEHICLE_TYPES[vehicle["type"]]["fuel"]
-                fuel_price = 47.50  # Assuming a fixed fuel price for simplicity
                 fuel_cost = (route_distance_km / 100) * fuel_consumption * fuel_price
                 
                 routes.append({
