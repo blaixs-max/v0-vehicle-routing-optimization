@@ -474,6 +474,7 @@ async function optimizeWithRailway(
         const vehicleId = route.vehicle_id || route.vehicleId
         const vehicle = vehicleMap.get(vehicleId)
         const vehicleName = vehicle?.plate || vehicle?.name || `Araç ${vehicleId}`
+        const vehiclePlate = vehicle?.plate || vehicle?.name || `Araç ${vehicleId}`
 
         const firstStop = route.stops?.[0]
         let depot = depots[0]
@@ -547,6 +548,7 @@ async function optimizeWithRailway(
         return {
           vehicleId,
           vehicleName,
+          vehiclePlate,
           depotId: depot.id,
           depotName: depot.name,
           stops,
