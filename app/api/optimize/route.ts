@@ -384,23 +384,24 @@ async function optimizeWithRailway(
   console.log("[v0] Sample vehicle:", vehicles[0])
 
   const railwayRequest = {
-    depot: {
-      id: selectedDepot.id,
+    depots: depots.map((d) => ({
+      id: d.id,
+      name: d.name || d.city || `Depo ${d.id}`,
       location: {
-        lat: selectedDepot.lat,
-        lng: selectedDepot.lng,
+        lat: d.lat,
+        lng: d.lng,
       },
-    },
+    })),
     customers: customersToOptimize.map((c) => ({
       id: c.id,
-      name: c.name || c.company_name || `Müşteri ${c.id}`, // name field eklendi
+      name: c.name || c.company_name || `Müşteri ${c.id}`,
       location: {
         lat: c.lat,
         lng: c.lng,
       },
       demand_pallets: c.pallet_capacity || c.demand || 5,
       business_type: c.business_type || "retail",
-      service_duration: c.service_time || 15, // service_duration Railway formatında
+      service_duration: c.service_time || 15,
       time_constraints: null,
       required_vehicle_types: null,
     })),
@@ -409,15 +410,15 @@ async function optimizeWithRailway(
       return {
         id: v.id,
         type: vehicleType,
-        capacity_pallets: v.capacity_pallet || v.capacity_pallets || 12, // capacity_pallets Railway formatında
-        fuel_consumption: v.fuel_consumption || 25, // fuel_consumption eklendi (L/100km)
+        capacity_pallets: v.capacity_pallet || v.capacity_pallets || 12,
+        fuel_consumption: v.fuel_consumption || 25,
       }
     }),
     fuel_price: options.fuelPricePerLiter || 47.5,
   }
 
   console.log("[v0] Railway request prepared")
-  console.log("[v0] Depot:", railwayRequest.depot)
+  console.log("[v0] Depots:", railwayRequest.depots)
   console.log("[v0] Customers count:", railwayRequest.customers.length)
   console.log("[v0] Vehicles count:", railwayRequest.vehicles.length)
   console.log("[v0] Fuel price:", railwayRequest.fuel_price)
@@ -428,7 +429,7 @@ async function optimizeWithRailway(
 
     console.log("[v0] Calling Railway API:", RAILWAY_API_URL)
     console.log("[v0] Request body sample:", {
-      depot: railwayRequest.depot,
+      depotsCount: railwayRequest.depots.length,
       customersCount: railwayRequest.customers.length,
       vehiclesCount: railwayRequest.vehicles.length,
     })
