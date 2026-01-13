@@ -262,7 +262,7 @@ export function OptimizationResults({ result, depots = [] }: OptimizationResults
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Toplam Mesafe</p>
-                <p className="text-xl font-bold">{summary.totalDistance.toFixed(1)} km</p>
+                <p className="text-xl font-bold">{(summary.totalDistance || 0).toFixed(1)} km</p>
               </div>
             </div>
           </CardContent>
@@ -276,7 +276,7 @@ export function OptimizationResults({ result, depots = [] }: OptimizationResults
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Toplam Sure</p>
-                <p className="text-xl font-bold">{Math.round(summary.totalDuration / 60)} saat</p>
+                <p className="text-xl font-bold">{Math.round((summary.totalDuration || 0) / 60)} saat</p>
               </div>
             </div>
           </CardContent>
