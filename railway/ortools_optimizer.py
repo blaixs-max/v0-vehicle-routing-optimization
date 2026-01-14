@@ -219,21 +219,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         )
         time_dimension = routing.GetDimensionOrDie('Time')
         
-        # Driver break constraint: After 270 minutes (4.5 hours) of driving, require 45 minute break
-        # This is modeled by allowing solver to add break intervals
-        for vehicle_id in range(num_vehicles):
-            time_dimension.SetBreakIntervalsOfVehicle(
-                [routing.solver().FixedDurationIntervalVar(
-                    270,  # Break starts after 270 min (4.5 hours)
-                    270 + 45,  # Break ends after 270 + 45 = 315 min
-                    45,  # Break duration: 45 minutes
-                    False,  # Not optional
-                    f'break_{vehicle_id}'
-                )],
-                vehicle_id
-            )
-        
-        print(f"[OR-Tools] Time dimension with break constraints added (4.5h driving + 45min break)")
+        print(f"[OR-Tools] Time dimension added (max 10h per route, breaks included in route time)")
         
         # Add time window constraints
         for location_idx, time_window in enumerate(time_windows):
@@ -531,21 +517,7 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         )
         time_dimension = routing.GetDimensionOrDie('Time')
         
-        # Driver break constraint: After 270 minutes (4.5 hours) of driving, require 45 minute break
-        # This is modeled by allowing solver to add break intervals
-        for vehicle_id in range(num_vehicles):
-            time_dimension.SetBreakIntervalsOfVehicle(
-                [routing.solver().FixedDurationIntervalVar(
-                    270,  # Break starts after 270 min (4.5 hours)
-                    270 + 45,  # Break ends after 270 + 45 = 315 min
-                    45,  # Break duration: 45 minutes
-                    False,  # Not optional
-                    f'break_{vehicle_id}'
-                )],
-                vehicle_id
-            )
-        
-        print(f"[OR-Tools] Time dimension with break constraints added (4.5h driving + 45min break)")
+        print(f"[OR-Tools] Time dimension added (max 10h per route, breaks included in route time)")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (

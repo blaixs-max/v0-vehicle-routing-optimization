@@ -33,7 +33,6 @@ const getInitialForm = (customer?: Customer | null, depots?: Depot[]) => ({
   district: customer?.district || "",
   lat: customer?.lat?.toString() || "",
   lng: customer?.lng?.toString() || "",
-  demand_pallets: customer?.demand_pallets?.toString() || "5",
   has_time_constraint: customer?.has_time_constraint || false,
   constraint_start_time: customer?.constraint_start_time || "08:00",
   constraint_end_time: customer?.constraint_end_time || "19:00",
@@ -67,7 +66,6 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
         district: form.district || null,
         lat: Number.parseFloat(form.lat),
         lng: Number.parseFloat(form.lng),
-        demand_pallets: Number.parseInt(form.demand_pallets),
         has_time_constraint: form.has_time_constraint,
         constraint_start_time: form.has_time_constraint ? form.constraint_start_time : null,
         constraint_end_time: form.has_time_constraint ? form.constraint_end_time : null,
@@ -182,20 +180,6 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 required
               />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="demand_pallets">Talep (Palet)</Label>
-            <Input
-              id="demand_pallets"
-              type="number"
-              min="1"
-              value={form.demand_pallets}
-              onChange={(e) => setForm({ ...form, demand_pallets: e.target.value })}
-              placeholder="5"
-              required
-            />
-            <p className="text-xs text-muted-foreground">Palet sayısı siparişler Excel dosyasından gelecek</p>
           </div>
 
           <div className="space-y-4 border-t pt-4">

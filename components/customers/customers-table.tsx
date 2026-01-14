@@ -173,15 +173,13 @@ export function CustomersTable() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Müşteri</TableHead>
-              <TableHead>Adres</TableHead>
+              <TableHead className="w-[250px]">Müşteri</TableHead>
               <TableHead>Şehir</TableHead>
-              <TableHead>Koordinat</TableHead>
-              <TableHead>Zaman Kısıtı</TableHead>
-              <TableHead>Talep (Palet)</TableHead>
-              <TableHead>Öncelik</TableHead>
+              <TableHead>Adres</TableHead>
+              <TableHead>Konum</TableHead>
               <TableHead>Depo</TableHead>
-              <TableHead className="w-16"></TableHead>
+              <TableHead>Öncelik</TableHead>
+              <TableHead className="text-right">İşlemler</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -190,45 +188,31 @@ export function CustomersTable() {
               return (
                 <TableRow key={customer.id}>
                   <TableCell className="font-medium">{customer.name}</TableCell>
+                  <TableCell>{customer.city}</TableCell>
                   <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
                     {customer.address}
                   </TableCell>
-                  <TableCell>{customer.city}</TableCell>
                   <TableCell>
                     {hasValidCoords ? (
-                      <span className="text-xs text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.open(
+                            `https://www.google.com/maps?q=${Number(customer.lat)},${Number(customer.lng)}`,
+                            "_blank",
+                          )
+                        }
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <MapPin className="h-3 w-3" />
                         {Number(customer.lat).toFixed(4)}, {Number(customer.lng).toFixed(4)}
-                      </span>
+                      </button>
                     ) : (
                       <Badge variant="destructive" className="text-xs">
                         <AlertTriangle className="h-3 w-3 mr-1" />
                         Yok
                       </Badge>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    {customer.has_time_constraint ? (
-                      <Badge variant="outline" className="text-xs">
-                        {customer.constraint_start_time?.slice(0, 5)} - {customer.constraint_end_time?.slice(0, 5)}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Yok</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="font-medium">{customer.demand_pallets} palet</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={
-                        customer.priority <= 2
-                          ? "bg-red-50 text-red-700 border-red-300"
-                          : customer.priority === 3
-                            ? "bg-blue-50 text-blue-700 border-blue-300"
-                            : "bg-gray-50 text-gray-700 border-gray-300"
-                      }
-                    >
-                      {customer.priority}
-                    </Badge>
                   </TableCell>
                   <TableCell>
                     {customer.assigned_depot ? (
@@ -245,6 +229,20 @@ export function CustomersTable() {
                     )}
                   </TableCell>
                   <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={
+                        customer.priority <= 2
+                          ? "bg-red-50 text-red-700 border-red-300"
+                          : customer.priority === 3
+                            ? "bg-blue-50 text-blue-700 border-blue-300"
+                            : "bg-gray-50 text-gray-700 border-gray-300"
+                      }
+                    >
+                      {customer.priority}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -338,28 +336,6 @@ export function CustomersTable() {
                     Koordinat Eksik
                   </div>
                 )}
-              </div>
-
-              <div className="flex items-center justify-between text-xs mb-2">
-                <div className="flex items-center gap-1">
-                  <span className="text-slate-500">Palet Talebi:</span>
-                  <span className="font-medium">{customer.demand_pallets} palet</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between text-xs mb-2">
-                <div className="flex items-center gap-1">
-                  <span className="text-slate-500">Zaman Kısıtı:</span>
-                  <span className="font-medium">
-                    {customer.has_time_constraint ? (
-                      <Badge variant="outline" className="text-xs">
-                        {customer.constraint_start_time?.slice(0, 5)} - {customer.constraint_end_time?.slice(0, 5)}
-                      </Badge>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">Kısıt Yok</span>
-                    )}
-                  </span>
-                </div>
               </div>
 
               <div className="flex items-center justify-between text-xs">
