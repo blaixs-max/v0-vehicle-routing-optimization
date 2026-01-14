@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { TURKEY_CITIES } from "@/lib/constants"
+import { TURKEY_CITIES, VEHICLE_TYPES } from "@/lib/constants"
 
 interface CustomerFormDialogProps {
   open: boolean
@@ -36,9 +36,9 @@ const getInitialForm = (customer?: Customer | null, depots?: Depot[]) => ({
   has_time_constraint: customer?.has_time_constraint || false,
   constraint_start_time: customer?.constraint_start_time || "08:00",
   constraint_end_time: customer?.constraint_end_time || "19:00",
-  priority: customer?.priority?.toString() || "3",
-  assigned_depot_id: customer?.assigned_depot_id || depots?.find((d) => d.city === "İstanbul")?.id || "",
+  assigned_depot_id: customer?.assigned_depot_id || depots?.find((d) => d.city === "İstanbul")?.id || "defaultDepotId",
   service_duration_min: customer?.service_duration_min || 15,
+  required_vehicle_type: customer?.required_vehicle_type || "", // Add required vehicle type
 })
 
 export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], onSuccess }: CustomerFormDialogProps) {
@@ -69,9 +69,9 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
         has_time_constraint: form.has_time_constraint,
         constraint_start_time: form.has_time_constraint ? form.constraint_start_time : null,
         constraint_end_time: form.has_time_constraint ? form.constraint_end_time : null,
-        priority: Number.parseInt(form.priority),
         assigned_depot_id: form.assigned_depot_id,
         service_duration_min: form.service_duration_min,
+        required_vehicle_type: form.required_vehicle_type || null, // Add required vehicle type
       }
 
       if (customer) {
@@ -252,19 +252,24 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Öncelik</Label>
-              <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
+              <Label>Gerekli Araç Tipi</Label>
+              <Select
+                value={form.required_vehicle_type}
+                onValueChange={(v) => setForm({ ...form, required_vehicle_type: v })}
+              >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Herhangi bir araç (kısıt yok)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">1 - Çok Acil</SelectItem>
-                  <SelectItem value="2">2 - Acil</SelectItem>
-                  <SelectItem value="3">3 - Normal</SelectItem>
-                  <SelectItem value="4">4 - Düşük</SelectItem>
-                  <SelectItem value="5">5 - Çok Düşük</SelectItem>
+                  <SelectItem value="none">Herhangi bir araç (kısıt yok)</SelectItem>
+                  {Object.entries(VEHICLE_TYPES).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      {config.label} - {config.capacity}p / {config.fuelConsumption}L
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">Bu müşteriye sadece belirtilen araç tipi gönderilir</p>
             </div>
             <div className="space-y-2">
               <Label>Atanmış Depo</Label>

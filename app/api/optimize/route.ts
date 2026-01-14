@@ -4,11 +4,8 @@ import { ORSClient } from "@/lib/ors-client"
 import { decodePolyline } from "@/lib/polyline"
 import { calculateTollCosts } from "@/lib/toll-calculator"
 
-const ORS_API_KEY = process.env.ORS_API_KEY
-const RAILWAY_API_URL = process.env.RAILWAY_API_URL
-
-console.log("[v0] ORS_API_KEY exists:", !!ORS_API_KEY)
-console.log("[v0] RAILWAY_API_URL:", RAILWAY_API_URL)
+console.log("[v0] ORS_API_KEY exists:", !!process.env.ORS_API_KEY)
+console.log("[v0] RAILWAY_API_URL:", process.env.RAILWAY_API_URL)
 
 // Haversine mesafe hesaplama (fallback için)
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -107,7 +104,7 @@ async function optimizeWithORS(
   },
 ) {
   const startTime = Date.now()
-  const client = new ORSClient(ORS_API_KEY!)
+  const client = new ORSClient(process.env.ORS_API_KEY!)
 
   // Kullanılabilir araçları filtrele
   const availableVehicles = vehicles.filter((v) => v.status === "active" || v.status === "available" || !v.status)
@@ -374,11 +371,11 @@ async function optimizeWithORS(
 }
 
 async function warmupRailway(): Promise<void> {
-  if (!RAILWAY_API_URL) return
+  if (!process.env.RAILWAY_API_URL) return
 
   try {
     console.log("[v0] Warming up Railway...")
-    await fetch(`${RAILWAY_API_URL}/health`, {
+    await fetch(`${process.env.RAILWAY_API_URL}/health`, {
       method: "GET",
       signal: AbortSignal.timeout(5000),
     })
@@ -392,6 +389,7 @@ async function optimizeWithRailway(
   depots: Depot[],
   vehicles: Vehicle[],
   customers: Customer[],
+  orders: { customerId: string; pallets: number; priority?: number }[],
   options: {
     algorithm?: "ortools" | "local"
     fuelPricePerLiter?: number
@@ -401,8 +399,14 @@ async function optimizeWithRailway(
 ) {
   console.log("[v0] Starting Railway optimization with OR-Tools")
 
-  if (!RAILWAY_API_URL) {
+  if (!process.env.RAILWAY_API_URL) {
     throw new Error("Railway API URL not configured")
+  }
+
+  const availableVehicles = vehicles.filter((v) => v.status !== "maintenance" && v.status !== "inactive")
+
+  if (availableVehicles.length === 0) {
+    throw new Error("Kullanılabilir araç bulunamadı - tüm araçlar bakımda veya aktif değil")
   }
 
   const validCustomers = customers.filter((c) => c.lat && c.lng && c.lat !== 0 && c.lng !== 0)
@@ -411,7 +415,13 @@ async function optimizeWithRailway(
     throw new Error("Koordinatları olan müşteri bulunamadı")
   }
 
-  const customersToOptimize = validCustomers
+  const orderMap = new Map(orders.map((o) => [o.customerId, o]))
+
+  const customersWithOrders = validCustomers.filter((c) => orderMap.has(c.id))
+
+  if (customersWithOrders.length === 0) {
+    throw new Error("Bekleyen siparişi olan müşteri bulunamadı")
+  }
 
   const railwayRequest = {
     depots: depots.map((d) => ({
@@ -422,31 +432,36 @@ async function optimizeWithRailway(
         lng: d.lng,
       },
     })),
-    customers: customersToOptimize.map((c) => ({
-      id: c.id,
-      name: c.name || c.company_name || `Müşteri ${c.id}`,
-      location: {
-        lat: c.lat,
-        lng: c.lng,
-      },
-      demand_pallets: c.pallet_capacity || c.demand || 5,
-      business_type: c.business_type || "retail",
-      service_duration: c.service_duration_min || 15,
-      time_constraints: c.has_time_constraint
-        ? {
-            start: c.constraint_start_time,
-            end: c.constraint_end_time,
-          }
-        : null,
-      required_vehicle_types: null,
-    })),
-    vehicles: vehicles.map((v) => {
+    customers: customersWithOrders.map((c) => {
+      const order = orderMap.get(c.id)!
+      return {
+        id: c.id,
+        name: c.name || c.company_name || `Müşteri ${c.id}`,
+        location: {
+          lat: c.lat,
+          lng: c.lng,
+        },
+        demand_pallets: order.pallets,
+        priority: order.priority || 3,
+        business_type: c.business_type || "retail",
+        service_duration: c.service_duration_min || 15,
+        time_constraints: c.has_time_constraint
+          ? {
+              start: c.constraint_start_time,
+              end: c.constraint_end_time,
+            }
+          : null,
+        required_vehicle_type: c.required_vehicle_type || null,
+      }
+    }),
+    vehicles: availableVehicles.map((v) => {
       const vehicleType = mapVehicleTypeToInt(v.vehicle_type)
       return {
         id: v.id,
         type: vehicleType,
         capacity_pallets: v.capacity_pallet || v.capacity_pallets || 12,
         fuel_consumption: v.fuel_consumption || 25,
+        vehicle_type_name: v.vehicle_type, // Send type name for matching
       }
     }),
     fuel_price: options.fuelPricePerLiter || 47.5,
@@ -454,20 +469,21 @@ async function optimizeWithRailway(
 
   console.log("[v0] Railway request prepared")
   console.log("[v0] Depots:", railwayRequest.depots.length)
-  console.log("[v0] Customers to optimize:", customersToOptimize.length)
+  console.log("[v0] Customers to optimize:", customersWithOrders.length)
+  console.log("[v0] Available vehicles:", availableVehicles.length)
 
   try {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 60000)
 
-    console.log("[v0] Calling Railway API:", RAILWAY_API_URL)
+    console.log("[v0] Calling Railway API:", process.env.RAILWAY_API_URL)
     console.log("[v0] Request body sample:", {
       depotCount: railwayRequest.depots.length,
       customersCount: railwayRequest.customers.length,
       vehiclesCount: railwayRequest.vehicles.length,
     })
 
-    const railwayResponse = await fetch(`${RAILWAY_API_URL}/optimize`, {
+    const railwayResponse = await fetch(`${process.env.RAILWAY_API_URL}/optimize`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -504,10 +520,10 @@ async function optimizeWithRailway(
           totalDistance: 0,
           totalDuration: 0,
           totalCost: 0,
-          unassignedCount: customersToOptimize.length,
+          unassignedCount: customersWithOrders.length,
         },
         routes: [],
-        unassigned: customersToOptimize.map((c) => c.id),
+        unassigned: customersWithOrders.map((c) => c.id),
       }
     }
 
@@ -690,43 +706,62 @@ function findNearestDepot(firstStop: any, depots: any[]): any {
   return nearestDepot
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json()
-    const { depots, vehicles, customers, options } = body
+    const body = await req.json()
+    console.log("[v0] POST /api/optimize called")
 
-    if (!depots || !vehicles || !customers) {
+    const {
+      depots: requestDepots, // Renamed to avoid confusion
+      vehicles: requestVehicles,
+      customers: requestCustomers,
+      orders,
+      algorithm = "ortools",
+      fuelPrice = 47.5,
+      maxRouteDistance,
+      maxRouteTime = 600,
+    } = body
+
+    if (!requestDepots || !requestVehicles || !requestCustomers) {
+      return NextResponse.json({ success: false, error: "Missing required data" }, { status: 400 })
+    }
+
+    const selectedDepots = requestDepots
+    const availableVehicles = requestVehicles.filter((v: any) => v.status !== "maintenance" && v.status !== "inactive")
+    const selectedCustomers = requestCustomers
+
+    if (selectedDepots.length === 0 || selectedCustomers.length === 0 || availableVehicles.length === 0) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 })
     }
 
-    console.log("[v0] Algorithm:", options?.algorithm || "ortools")
-    console.log("[v0] Depots:", depots.length)
-    console.log("[v0] Vehicles:", vehicles.length)
-    console.log("[v0] Customers:", customers.length)
+    console.log("[v0] Algorithm:", algorithm)
+    console.log("[v0] Depots:", selectedDepots.length)
+    console.log("[v0] Vehicles:", availableVehicles.length)
+    console.log("[v0] Customers:", selectedCustomers.length)
+    console.log("[v0] Orders:", orders?.length || 0)
 
-    if (options?.algorithm === "ortools" || !options?.algorithm) {
+    if (algorithm === "ortools") {
       await warmupRailway()
     }
 
-    let result
+    let optimization
 
-    if (options?.algorithm === "ortools" || !options?.algorithm) {
-      result = await optimizeWithRailway(depots, vehicles, customers, {
-        algorithm: "ortools",
-        fuelPricePerLiter: options?.fuelPrice || 47.5,
-        maxRouteDistanceKm: options?.maxRouteDistance,
-        maxRouteTimeMin: options?.maxRouteDuration,
+    if (algorithm === "ortools") {
+      optimization = await optimizeWithRailway(selectedDepots, availableVehicles, selectedCustomers, orders || [], {
+        algorithm,
+        fuelPricePerLiter: fuelPrice,
+        maxRouteDistanceKm: maxRouteDistance,
+        maxRouteTimeMin: maxRouteTime,
       })
     } else {
-      result = await optimizeWithORS(depots, vehicles, customers, {
-        fuelPricePerLiter: options?.fuelPrice || 47.5,
-        maxRouteDistanceKm: options?.maxRouteDistance,
-        maxRouteTimeMin: options?.maxRouteDuration,
-        vehicleCapacityUtilization: 0.9,
+      optimization = await optimizeWithORS(selectedDepots, availableVehicles, selectedCustomers, {
+        fuelPricePerLiter: fuelPrice,
+        maxRouteDistanceKm: maxRouteDistance,
+        maxRouteTimeMin: maxRouteTime,
       })
     }
 
-    return NextResponse.json(result)
+    return NextResponse.json(optimization)
   } catch (error: any) {
     console.error("[v0] Optimization error:", error)
     return NextResponse.json(

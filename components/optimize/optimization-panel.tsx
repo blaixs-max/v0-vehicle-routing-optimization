@@ -49,7 +49,9 @@ export function OptimizationPanel() {
   const [missingCoordinatesCustomers, setMissingCoordinatesCustomers] = useState<Customer[]>([])
   const [showMissingCoordinatesDialog, setShowMissingCoordinatesDialog] = useState(false)
 
-  const [orders, setOrders] = useState<{ customerId: string; customerName: string; pallets: number }[]>([])
+  const [orders, setOrders] = useState<
+    { customerId: string; customerName: string; pallets: number; priority?: number }[]
+  >([])
 
   // Parameters
   const [selectedDepots, setSelectedDepots] = useState<string[]>([])
@@ -103,6 +105,7 @@ export function OptimizationPanel() {
             customerId: o.customer_id,
             customerName: o.customer_name,
             pallets: o.pallets,
+            priority: o.priority || 3,
           }))
         setOrders(pendingOrders)
         console.log("[v0] Loaded orders from API:", pendingOrders.length)
@@ -151,7 +154,7 @@ export function OptimizationPanel() {
     if (orders.length === 0) {
       toast({
         title: "Hata",
-        description: "Lütfen sipariş dosyası yükleyin",
+        description: "Bekleyen sipariş bulunamadı. Lütfen Siparişler sayfasından sipariş ekleyin.",
         variant: "destructive",
       })
       return
@@ -214,13 +217,11 @@ export function OptimizationPanel() {
           depots: depotsData,
           vehicles: vehiclesData,
           customers: customersData,
-          options: {
-            fuelPrice,
-            maxRouteDistance,
-            maxRouteDuration,
-            useRealDistances,
-            algorithm,
-          },
+          orders,
+          algorithm,
+          fuelPrice,
+          maxRouteDistance,
+          maxRouteTime: maxRouteDuration,
         }),
         signal: controller.signal,
       })
