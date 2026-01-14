@@ -133,8 +133,6 @@ export function VehiclesTable() {
               <TableHead>Tip</TableHead>
               <TableHead>Depo</TableHead>
               <TableHead>Kapasite (Palet)</TableHead>
-              <TableHead>Ağırlık (kg)</TableHead>
-              <TableHead>Hacim (m³)</TableHead>
               <TableHead>Sürücü Saatleri</TableHead>
               <TableHead>Maliyet/km</TableHead>
               <TableHead>
@@ -170,37 +168,8 @@ export function VehiclesTable() {
                 </TableCell>
                 <TableCell>
                   <div className="text-xs">
-                    <span className="font-medium">{(Number(vehicle.capacity_kg || 0) / 1000).toFixed(1)}</span>
-                    <span className="text-muted-foreground"> ton</span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="text-xs">
-                    {vehicle.capacity_m3 ? (
-                      <>
-                        <span className="font-medium">{Number(vehicle.capacity_m3)}</span>
-                        <span className="text-muted-foreground"> m³</span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="text-xs">
-                    {vehicle.driver_max_work_hours ? (
-                      <div className="space-y-1">
-                        <div>
-                          <span className="font-medium">{vehicle.driver_max_work_hours}</span>
-                          <span className="text-muted-foreground"> saat</span>
-                        </div>
-                        {vehicle.driver_break_duration && (
-                          <div className="text-muted-foreground">Mola: {vehicle.driver_break_duration} dk</div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
+                    <span className="font-medium">{vehicle.driver_max_work_hours}</span>
+                    <span className="text-muted-foreground"> saat</span>
                   </div>
                 </TableCell>
                 <TableCell>{Number(vehicle.cost_per_km || 0).toFixed(2)} TL</TableCell>

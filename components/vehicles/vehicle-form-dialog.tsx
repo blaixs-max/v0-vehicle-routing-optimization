@@ -92,6 +92,7 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
       ...form,
       vehicle_type: type,
       capacity_pallets: config.capacity_pallets.toString(),
+      fuel_consumption_per_100km: config.fuel_consumption.toString(),
       capacity_kg:
         type === "kamyonet"
           ? "7500"
@@ -258,8 +259,8 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
                 id="capacity_pallets"
                 type="number"
                 value={form.capacity_pallets}
-                onChange={(e) => setForm({ ...form, capacity_pallets: e.target.value })}
-                required
+                readOnly
+                className="bg-muted cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
@@ -268,8 +269,8 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
                 id="capacity_kg"
                 type="number"
                 value={form.capacity_kg}
-                onChange={(e) => setForm({ ...form, capacity_kg: e.target.value })}
-                required
+                readOnly
+                className="bg-muted cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
@@ -279,9 +280,8 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
                 type="number"
                 step="0.1"
                 value={form.capacity_m3}
-                onChange={(e) => setForm({ ...form, capacity_m3: e.target.value })}
-                placeholder="20"
-                required
+                readOnly
+                className="bg-muted cursor-not-allowed"
               />
             </div>
           </div>
@@ -344,8 +344,8 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
                 type="number"
                 step="0.1"
                 value={form.fuel_consumption_per_100km}
-                onChange={(e) => setForm({ ...form, fuel_consumption_per_100km: e.target.value })}
-                required
+                readOnly
+                className="bg-muted cursor-not-allowed"
               />
             </div>
             <div className="space-y-2">
@@ -354,8 +354,8 @@ export function VehicleFormDialog({ open, onOpenChange, vehicle, depots = [], on
                 id="fixed_cost"
                 type="number"
                 value={form.fixed_daily_cost}
-                onChange={(e) => setForm({ ...form, fixed_daily_cost: e.target.value })}
-                required
+                readOnly
+                className="bg-muted cursor-not-allowed"
               />
             </div>
           </div>
