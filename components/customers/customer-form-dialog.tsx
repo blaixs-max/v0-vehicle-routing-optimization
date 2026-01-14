@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState, useRef } from "react"
 import type { Customer, Depot } from "@/types/database"
 import {
@@ -17,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { TURKEY_CITIES } from "@/lib/constants"
 
 interface CustomerFormDialogProps {
   open: boolean
@@ -33,14 +33,13 @@ const getInitialForm = (customer?: Customer | null, depots?: Depot[]) => ({
   district: customer?.district || "",
   lat: customer?.lat?.toString() || "",
   lng: customer?.lng?.toString() || "",
-  demand_pallets: customer?.demand_pallets?.toString() || "1",
-  demand_kg: customer?.demand_kg?.toString() || "800",
+  demand_pallets: customer?.demand_pallets?.toString() || "5",
   has_time_constraint: customer?.has_time_constraint || false,
   constraint_start_time: customer?.constraint_start_time || "08:00",
   constraint_end_time: customer?.constraint_end_time || "19:00",
   priority: customer?.priority?.toString() || "3",
   assigned_depot_id: customer?.assigned_depot_id || depots?.find((d) => d.city === "İstanbul")?.id || "",
-  status: (customer?.status || "pending") as Customer["status"],
+  service_duration_min: customer?.service_duration_min || 15,
 })
 
 export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], onSuccess }: CustomerFormDialogProps) {
@@ -69,13 +68,12 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
         lat: Number.parseFloat(form.lat),
         lng: Number.parseFloat(form.lng),
         demand_pallets: Number.parseInt(form.demand_pallets),
-        demand_kg: Number.parseFloat(form.demand_kg),
         has_time_constraint: form.has_time_constraint,
         constraint_start_time: form.has_time_constraint ? form.constraint_start_time : null,
         constraint_end_time: form.has_time_constraint ? form.constraint_end_time : null,
         priority: Number.parseInt(form.priority),
         assigned_depot_id: form.assigned_depot_id,
-        status: form.status,
+        service_duration_min: form.service_duration_min,
       }
 
       if (customer) {
@@ -116,7 +114,7 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
               id="name"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Migros Kadıköy"
+              placeholder="ABC Lojistik"
               required
             />
           </div>
@@ -127,7 +125,7 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
               id="address"
               value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
-              placeholder="Tam adres"
+              placeholder="Kartal, Istanbul"
               required
             />
           </div>
@@ -139,10 +137,12 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="İstanbul">İstanbul</SelectItem>
-                  <SelectItem value="Ankara">Ankara</SelectItem>
-                  <SelectItem value="İzmir">İzmir</SelectItem>
+                <SelectContent className="max-h-[300px]">
+                  {TURKEY_CITIES.map((city) => (
+                    <SelectItem key={city} value={city}>
+                      {city}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -152,7 +152,7 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 id="district"
                 value={form.district}
                 onChange={(e) => setForm({ ...form, district: e.target.value })}
-                placeholder="Kadıköy"
+                placeholder="Kartal"
               />
             </div>
           </div>
@@ -166,7 +166,7 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 step="any"
                 value={form.lat}
                 onChange={(e) => setForm({ ...form, lat: e.target.value })}
-                placeholder="40.9833"
+                placeholder="40.90010000"
                 required
               />
             </div>
@@ -178,67 +178,24 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 step="any"
                 value={form.lng}
                 onChange={(e) => setForm({ ...form, lng: e.target.value })}
-                placeholder="29.0333"
+                placeholder="29.19290000"
                 required
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="demand_pallets">Talep (Palet)</Label>
-              <Input
-                id="demand_pallets"
-                type="number"
-                min="1"
-                value={form.demand_pallets}
-                onChange={(e) => setForm({ ...form, demand_pallets: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="demand_kg">Ağırlık (kg)</Label>
-              <Input
-                id="demand_kg"
-                type="number"
-                value={form.demand_kg}
-                onChange={(e) => setForm({ ...form, demand_kg: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="demand_m3">Hacim (m³)</Label>
-              <Input
-                id="demand_m3"
-                type="number"
-                step="0.1"
-                value={form.demand_m3}
-                onChange={(e) => setForm({ ...form, demand_m3: e.target.value })}
-                placeholder="2.4"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="time_window_start">Teslimat Başlangıç</Label>
-              <Input
-                id="time_window_start"
-                type="time"
-                value={form.time_window_start}
-                onChange={(e) => setForm({ ...form, time_window_start: e.target.value })}
-                placeholder="09:00"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="time_window_end">Teslimat Bitiş</Label>
-              <Input
-                id="time_window_end"
-                type="time"
-                value={form.time_window_end}
-                onChange={(e) => setForm({ ...form, time_window_end: e.target.value })}
-                placeholder="17:00"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="demand_pallets">Talep (Palet)</Label>
+            <Input
+              id="demand_pallets"
+              type="number"
+              min="1"
+              value={form.demand_pallets}
+              onChange={(e) => setForm({ ...form, demand_pallets: e.target.value })}
+              placeholder="5"
+              required
+            />
+            <p className="text-xs text-muted-foreground">Palet sayısı siparişler Excel dosyasından gelecek</p>
           </div>
 
           <div className="space-y-4 border-t pt-4">
@@ -293,18 +250,23 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="service_duration_min">Boşaltma Süresi (dk)</Label>
-              <Input
-                id="service_duration_min"
-                type="number"
-                min="5"
-                value={form.service_duration_min}
-                onChange={(e) => setForm({ ...form, service_duration_min: e.target.value })}
-                placeholder="15"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="service_duration_min">Boşaltma Süresi (dakika)</Label>
+            <Input
+              id="service_duration_min"
+              type="number"
+              min="5"
+              max="120"
+              value={form.service_duration_min || 15}
+              onChange={(e) => setForm({ ...form, service_duration_min: Number.parseInt(e.target.value) })}
+              placeholder="15"
+            />
+            <p className="text-xs text-muted-foreground">
+              Müşteride yük boşaltma için gereken süre (varsayılan: 15 dk)
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Öncelik</Label>
               <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
@@ -321,34 +283,20 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Durum</Label>
-              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as Customer["status"] })}>
+              <Label>Atanmış Depo</Label>
+              <Select value={form.assigned_depot_id} onValueChange={(v) => setForm({ ...form, assigned_depot_id: v })}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Depo seçin" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pending">Bekliyor</SelectItem>
-                  <SelectItem value="assigned">Atandı</SelectItem>
-                  <SelectItem value="delivered">Teslim Edildi</SelectItem>
+                  {depots.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Atanmış Depo</Label>
-            <Select value={form.assigned_depot_id} onValueChange={(v) => setForm({ ...form, assigned_depot_id: v })}>
-              <SelectTrigger>
-                <SelectValue placeholder="Depo seçin" />
-              </SelectTrigger>
-              <SelectContent>
-                {depots.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <DialogFooter>

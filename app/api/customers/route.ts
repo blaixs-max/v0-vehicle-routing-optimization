@@ -10,7 +10,6 @@ export async function GET() {
       SELECT c.*, d.name as depot_name
       FROM customers c
       LEFT JOIN depots d ON c.assigned_depot_id = d.id
-      WHERE c.status = 'pending'
       ORDER BY c.name
     `
 

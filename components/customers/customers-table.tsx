@@ -177,13 +177,11 @@ export function CustomersTable() {
               <TableHead>Adres</TableHead>
               <TableHead>Şehir</TableHead>
               <TableHead>Koordinat</TableHead>
-              <TableHead>Zaman Penceresi</TableHead>
-              <TableHead>Servis Süresi</TableHead>
-              <TableHead>Araç Tipi</TableHead>
+              <TableHead>Zaman Kısıtı</TableHead>
+              <TableHead>Talep (Palet)</TableHead>
+              <TableHead>Öncelik</TableHead>
               <TableHead>Depo</TableHead>
-              <TableHead className="w-12">Palet Talebi</TableHead>
-              <TableHead className="w-12">Zaman Kısıtı</TableHead>
-              <TableHead className="w-12">Öncelik</TableHead>
+              <TableHead className="w-16"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -198,101 +196,68 @@ export function CustomersTable() {
                   <TableCell>{customer.city}</TableCell>
                   <TableCell>
                     {hasValidCoords ? (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground font-mono">
-                        <MapPin className="h-3 w-3 text-green-500" />
+                      <span className="text-xs text-muted-foreground">
                         {Number(customer.lat).toFixed(4)}, {Number(customer.lng).toFixed(4)}
-                      </div>
+                      </span>
                     ) : (
-                      <div className="flex items-center gap-1 text-xs text-orange-500">
-                        <AlertTriangle className="h-3 w-3" />
-                        Koordinat Eksik
-                      </div>
+                      <Badge variant="destructive" className="text-xs">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Yok
+                      </Badge>
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="text-xs">
-                      {customer.time_window_start && customer.time_window_end ? (
-                        <span className="font-mono text-muted-foreground">
-                          {customer.time_window_start} - {customer.time_window_end}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">Yok</span>
-                      )}
-                    </div>
+                    {customer.has_time_constraint ? (
+                      <Badge variant="outline" className="text-xs">
+                        {customer.constraint_start_time?.slice(0, 5)} - {customer.constraint_end_time?.slice(0, 5)}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Yok</span>
+                    )}
                   </TableCell>
+                  <TableCell className="font-medium">{customer.demand_pallets} palet</TableCell>
                   <TableCell>
-                    <div className="text-xs">
-                      {customer.service_duration ? (
-                        <span className="font-medium">{customer.service_duration} dk</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-xs">
-                      {customer.required_vehicle_types && customer.required_vehicle_types.length > 0 ? (
-                        <div className="flex gap-1 flex-wrap">
-                          {customer.required_vehicle_types.map((type) => (
-                            <Badge key={type} variant="outline" className="text-xs">
-                              {type}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">Hepsi</span>
-                      )}
-                    </div>
+                    <Badge
+                      variant="outline"
+                      className={
+                        customer.priority <= 2
+                          ? "bg-red-50 text-red-700 border-red-300"
+                          : customer.priority === 3
+                            ? "bg-blue-50 text-blue-700 border-blue-300"
+                            : "bg-gray-50 text-gray-700 border-gray-300"
+                      }
+                    >
+                      {customer.priority}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     {customer.assigned_depot ? (
                       <Badge
-                        variant="outline"
                         style={{
-                          borderColor: DEPOT_COLORS[customer.assigned_depot.city]?.primary,
-                          color: DEPOT_COLORS[customer.assigned_depot.city]?.primary,
+                          backgroundColor: DEPOT_COLORS[customer.assigned_depot.city]?.secondary || "#e5e7eb",
+                          color: DEPOT_COLORS[customer.assigned_depot.city]?.marker || "#374151",
                         }}
                       >
                         {customer.assigned_depot.city}
                       </Badge>
                     ) : (
-                      <Badge variant="outline">Atanmamış</Badge>
+                      <span className="text-xs text-muted-foreground">-</span>
                     )}
-                  </TableCell>
-                  <TableCell className="text-center">{customer.demand_pallets} palet</TableCell>
-                  <TableCell className="text-center">
-                    {customer.has_time_constraint ? (
-                      <Badge variant="secondary" className="text-xs">
-                        {customer.constraint_start_time?.slice(0, 5)} - {customer.constraint_end_time?.slice(0, 5)}{" "}
-                        Kapalı
-                      </Badge>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">Kısıt Yok</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge
-                      variant={
-                        customer.priority === 1 ? "destructive" : customer.priority === 2 ? "default" : "outline"
-                      }
-                    >
-                      P{customer.priority}
-                    </Badge>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setEditingCustomer(customer)}>
-                          <Pencil className="h-4 w-4 mr-2" />
+                          <Pencil className="mr-2 h-4 w-4" />
                           Düzenle
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive" onClick={() => deleteCustomer(customer.id)}>
-                          <Trash2 className="h-4 w-4 mr-2" />
+                        <DropdownMenuItem onClick={() => deleteCustomer(customer.id)} className="text-destructive">
+                          <Trash2 className="mr-2 h-4 w-4" />
                           Sil
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -303,23 +268,6 @@ export function CustomersTable() {
             })}
           </TableBody>
         </Table>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between p-4 border-t">
-            <div className="text-sm text-muted-foreground">
-              Sayfa {page + 1} / {totalPages}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPage(page - 1)} disabled={page === 0}>
-                Önceki
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setPage(page + 1)} disabled={page >= totalPages - 1}>
-                Sonraki
-              </Button>
-            </div>
-          </div>
-        )}
       </Card>
 
       {/* Mobile Cards */}
@@ -358,16 +306,14 @@ export function CustomersTable() {
                     variant="outline"
                     className="text-xs"
                     style={{
-                      borderColor: DEPOT_COLORS[customer.assigned_depot.city]?.primary,
-                      color: DEPOT_COLORS[customer.assigned_depot.city]?.primary,
+                      backgroundColor: DEPOT_COLORS[customer.assigned_depot.city]?.secondary || "#e5e7eb",
+                      color: DEPOT_COLORS[customer.assigned_depot.city]?.marker || "#374151",
                     }}
                   >
                     {customer.assigned_depot.city}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-xs">
-                    Atanmamış
-                  </Badge>
+                  <span className="text-xs text-slate-500">-</span>
                 )}
                 <span className="text-xs text-slate-500">{customer.city}</span>
               </div>
@@ -406,9 +352,8 @@ export function CustomersTable() {
                   <span className="text-slate-500">Zaman Kısıtı:</span>
                   <span className="font-medium">
                     {customer.has_time_constraint ? (
-                      <Badge variant="secondary" className="text-xs">
-                        {customer.constraint_start_time?.slice(0, 5)} - {customer.constraint_end_time?.slice(0, 5)}{" "}
-                        Kapalı
+                      <Badge variant="outline" className="text-xs">
+                        {customer.constraint_start_time?.slice(0, 5)} - {customer.constraint_end_time?.slice(0, 5)}
                       </Badge>
                     ) : (
                       <span className="text-sm text-muted-foreground">Kısıt Yok</span>
@@ -422,11 +367,16 @@ export function CustomersTable() {
                   <span className="text-slate-500">Öncelik:</span>
                   <span className="font-medium">
                     <Badge
-                      variant={
-                        customer.priority === 1 ? "destructive" : customer.priority === 2 ? "default" : "outline"
+                      variant="outline"
+                      className={
+                        customer.priority <= 2
+                          ? "bg-red-50 text-red-700 border-red-300"
+                          : customer.priority === 3
+                            ? "bg-blue-50 text-blue-700 border-blue-300"
+                            : "bg-gray-50 text-gray-700 border-gray-300"
                       }
                     >
-                      P{customer.priority}
+                      {customer.priority}
                     </Badge>
                   </span>
                 </div>
@@ -434,24 +384,24 @@ export function CustomersTable() {
             </Card>
           )
         })}
-
-        {/* Mobile Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between pt-2">
-            <div className="text-xs text-muted-foreground">
-              {page + 1} / {totalPages}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPage(page - 1)} disabled={page === 0}>
-                Önceki
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setPage(page + 1)} disabled={page >= totalPages - 1}>
-                Sonraki
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Mobile Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <div className="text-xs text-muted-foreground">
+            {page + 1} / {totalPages}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage(page - 1)} disabled={page === 0}>
+              Önceki
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(page + 1)} disabled={page >= totalPages - 1}>
+              Sonraki
+            </Button>
+          </div>
+        </div>
+      )}
 
       {missingCoordsCount > 0 && (
         <Alert className="mt-4 border-orange-500/50 bg-orange-500/10">
@@ -463,7 +413,7 @@ export function CustomersTable() {
       )}
 
       <CustomerFormDialog
-        open={!!editingCustomer}
+        open={editingCustomer !== null}
         onOpenChange={(open) => !open && setEditingCustomer(null)}
         customer={editingCustomer}
         depots={depots}

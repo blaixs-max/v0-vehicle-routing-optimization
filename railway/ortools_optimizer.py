@@ -191,24 +191,49 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         # Time dimension: travel time + service time
         def time_callback(from_index, to_index):
-            from_node = manager.IndexToNode(from_index)
-            to_node = manager.IndexToNode(to_index)
-            travel_time = int((distance_matrix[from_node][to_node] / 1000) / 60 * 60)  # 60 km/h avg
-            service_time = SERVICE_TIMES.get(customers[to_node - 1].get("business_type", "default"), SERVICE_TIMES["default"]) if to_node > 0 else 0
-            return travel_time + service_time
+            """Calculate travel + service time between nodes"""
+            try:
+                from_node = manager.IndexToNode(from_index)
+                to_node = manager.IndexToNode(to_index)
+                
+                # Travel time (distance in meters / 60 km/h = minutes)
+                travel_time_minutes = (distance_matrix[from_node][to_node] / 1000) / 60 * 60
+                
+                # Service time at destination
+                service_time_minutes = SERVICE_TIMES.get(customers[to_node - 1].get("business_type", "default"), SERVICE_TIMES["default"]) if to_node > 0 else 0
+                
+                return int(travel_time_minutes + service_time_minutes)
+            except Exception as e:
+                print(f"[OR-Tools] ERROR in time_callback: {e}")
+                return 999999
         
         time_callback_index = routing.RegisterTransitCallback(time_callback)
         
-        horizon = 24 * 60  # 24 hours in minutes
+        # Time dimension: max 600 minutes per route (10 hours total including breaks)
         routing.AddDimension(
             time_callback_index,
-            horizon,  # allow waiting time
-            horizon,  # maximum time per vehicle
-            False,  # Don't force start cumul to zero
+            0,  # No slack
+            600,  # Max 600 minutes (10 hours) per vehicle
+            True,  # Start cumul to zero
             'Time'
         )
-        
         time_dimension = routing.GetDimensionOrDie('Time')
+        
+        # Driver break constraint: After 270 minutes (4.5 hours) of driving, require 45 minute break
+        # This is modeled by allowing solver to add break intervals
+        for vehicle_id in range(num_vehicles):
+            time_dimension.SetBreakIntervalsOfVehicle(
+                [routing.solver().FixedDurationIntervalVar(
+                    270,  # Break starts after 270 min (4.5 hours)
+                    270 + 45,  # Break ends after 270 + 45 = 315 min
+                    45,  # Break duration: 45 minutes
+                    False,  # Not optional
+                    f'break_{vehicle_id}'
+                )],
+                vehicle_id
+            )
+        
+        print(f"[OR-Tools] Time dimension with break constraints added (4.5h driving + 45min break)")
         
         # Add time window constraints
         for location_idx, time_window in enumerate(time_windows):
@@ -259,7 +284,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                             prev_loc["lat"], prev_loc["lng"],
                             customer["location"]["lat"], customer["location"]["lng"]
                         )
-                        travel_time = (distance_from_prev / 60) * 60  # 60 km/h average
+                        travel_time = (distance_from_prev / 60) * 60  # 60 km/h avg
                     else:
                         # First stop - distance from depot
                         distance_from_prev = haversine_distance(
@@ -475,6 +500,52 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
             'Capacity'
         )
         print(f"[OR-Tools] Capacity dimension added")
+        
+        # Time dimension: travel time + service time
+        def time_callback(from_index, to_index):
+            """Calculate travel + service time between nodes"""
+            try:
+                from_node = manager.IndexToNode(from_index)
+                to_node = manager.IndexToNode(to_index)
+                
+                # Travel time (distance in meters / 60 km/h = minutes)
+                travel_time_minutes = (distance_matrix[from_node][to_node] / 1000) / 60 * 60
+                
+                # Service time at destination
+                service_time_minutes = SERVICE_TIMES.get(customers[to_node - len(depots)].get("business_type", "default"), SERVICE_TIMES["default"]) if to_node >= len(depots) else 0
+                
+                return int(travel_time_minutes + service_time_minutes)
+            except Exception as e:
+                print(f"[OR-Tools] ERROR in time_callback: {e}")
+                return 999999
+        
+        time_callback_index = routing.RegisterTransitCallback(time_callback)
+        
+        # Time dimension: max 600 minutes per route (10 hours total including breaks)
+        routing.AddDimension(
+            time_callback_index,
+            0,  # No slack
+            600,  # Max 600 minutes (10 hours) per vehicle
+            True,  # Start cumul to zero
+            'Time'
+        )
+        time_dimension = routing.GetDimensionOrDie('Time')
+        
+        # Driver break constraint: After 270 minutes (4.5 hours) of driving, require 45 minute break
+        # This is modeled by allowing solver to add break intervals
+        for vehicle_id in range(num_vehicles):
+            time_dimension.SetBreakIntervalsOfVehicle(
+                [routing.solver().FixedDurationIntervalVar(
+                    270,  # Break starts after 270 min (4.5 hours)
+                    270 + 45,  # Break ends after 270 + 45 = 315 min
+                    45,  # Break duration: 45 minutes
+                    False,  # Not optional
+                    f'break_{vehicle_id}'
+                )],
+                vehicle_id
+            )
+        
+        print(f"[OR-Tools] Time dimension with break constraints added (4.5h driving + 45min break)")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (

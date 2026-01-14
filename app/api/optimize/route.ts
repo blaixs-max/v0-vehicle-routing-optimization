@@ -431,8 +431,13 @@ async function optimizeWithRailway(
       },
       demand_pallets: c.pallet_capacity || c.demand || 5,
       business_type: c.business_type || "retail",
-      service_duration: c.service_time || 15,
-      time_constraints: null,
+      service_duration: c.service_duration_min || 15,
+      time_constraints: c.has_time_constraint
+        ? {
+            start: c.constraint_start_time,
+            end: c.constraint_end_time,
+          }
+        : null,
       required_vehicle_types: null,
     })),
     vehicles: vehicles.map((v) => {
