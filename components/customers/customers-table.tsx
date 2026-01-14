@@ -181,7 +181,9 @@ export function CustomersTable() {
               <TableHead>Servis Süresi</TableHead>
               <TableHead>Araç Tipi</TableHead>
               <TableHead>Depo</TableHead>
-              <TableHead className="w-12"></TableHead>
+              <TableHead className="w-12">Palet Talebi</TableHead>
+              <TableHead className="w-12">Zaman Kısıtı</TableHead>
+              <TableHead className="w-12">Öncelik</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -190,7 +192,9 @@ export function CustomersTable() {
               return (
                 <TableRow key={customer.id}>
                   <TableCell className="font-medium">{customer.name}</TableCell>
-                  <TableCell className="max-w-xs truncate text-muted-foreground text-sm">{customer.address}</TableCell>
+                  <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
+                    {customer.address}
+                  </TableCell>
                   <TableCell>{customer.city}</TableCell>
                   <TableCell>
                     {hasValidCoords ? (
@@ -254,6 +258,26 @@ export function CustomersTable() {
                     ) : (
                       <Badge variant="outline">Atanmamış</Badge>
                     )}
+                  </TableCell>
+                  <TableCell className="text-center">{customer.demand_pallets} palet</TableCell>
+                  <TableCell className="text-center">
+                    {customer.has_time_constraint ? (
+                      <Badge variant="secondary" className="text-xs">
+                        {customer.constraint_start_time?.slice(0, 5)} - {customer.constraint_end_time?.slice(0, 5)}{" "}
+                        Kapalı
+                      </Badge>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">Kısıt Yok</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge
+                      variant={
+                        customer.priority === 1 ? "destructive" : customer.priority === 2 ? "default" : "outline"
+                      }
+                    >
+                      P{customer.priority}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -370,19 +394,40 @@ export function CustomersTable() {
                 )}
               </div>
 
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center justify-between text-xs mb-2">
                 <div className="flex items-center gap-1">
-                  <span className="text-slate-500">Servis:</span>
+                  <span className="text-slate-500">Palet Talebi:</span>
+                  <span className="font-medium">{customer.demand_pallets} palet</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs mb-2">
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-500">Zaman Kısıtı:</span>
                   <span className="font-medium">
-                    {customer.service_duration ? `${customer.service_duration} dk` : "-"}
+                    {customer.has_time_constraint ? (
+                      <Badge variant="secondary" className="text-xs">
+                        {customer.constraint_start_time?.slice(0, 5)} - {customer.constraint_end_time?.slice(0, 5)}{" "}
+                        Kapalı
+                      </Badge>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">Kısıt Yok</span>
+                    )}
                   </span>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1">
-                  <span className="text-slate-500">Araç:</span>
+                  <span className="text-slate-500">Öncelik:</span>
                   <span className="font-medium">
-                    {customer.required_vehicle_types && customer.required_vehicle_types.length > 0
-                      ? customer.required_vehicle_types.join(", ")
-                      : "Hepsi"}
+                    <Badge
+                      variant={
+                        customer.priority === 1 ? "destructive" : customer.priority === 2 ? "default" : "outline"
+                      }
+                    >
+                      P{customer.priority}
+                    </Badge>
                   </span>
                 </div>
               </div>

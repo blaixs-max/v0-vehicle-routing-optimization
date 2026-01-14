@@ -32,7 +32,9 @@ class Customer(BaseModel):
     demand_pallets: int
     business_type: str
     service_duration: int
-    time_constraints: Optional[str] = None
+    has_time_constraint: bool = False
+    constraint_start_time: Optional[str] = None  # Format: "HH:MM" - start of CLOSED period
+    constraint_end_time: Optional[str] = None    # Format: "HH:MM" - end of CLOSED period
     required_vehicle_types: Optional[List[int]] = None
 
 class Vehicle(BaseModel):

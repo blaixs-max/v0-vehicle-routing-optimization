@@ -35,6 +35,16 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     
     return R * c
 
+def time_to_minutes(time_str: str) -> int:
+    """Convert HH:MM time string to minutes from start of day"""
+    if not time_str:
+        return 0
+    try:
+        hours, minutes = map(int, time_str.split(':'))
+        return hours * 60 + minutes
+    except:
+        return 0
+
 def parse_time_constraint(constraint: str) -> tuple:
     """Zaman kısıtını parse et
     Örnek: '20:00 den önce verilemiyor' -> (20*60, 24*60)
@@ -93,6 +103,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         # Locations: depot + customers
         locations = [(depot_lat, depot_lng)]
         demands = [0]
+        time_windows = [(0, 24 * 60)]  # Depot has no time restriction (full day)
         
         for customer in customers:
             lat = customer["location"]["lat"]
@@ -104,6 +115,26 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 
             locations.append((lat, lng))
             demands.append(customer.get("demand_pallets", 1))
+            
+            has_constraint = customer.get("has_time_constraint", False)
+            if has_constraint:
+                closed_start_str = customer.get("constraint_start_time")
+                closed_end_str = customer.get("constraint_end_time")
+                
+                if closed_start_str and closed_end_str:
+                    closed_start = time_to_minutes(closed_start_str)
+                    closed_end = time_to_minutes(closed_end_str)
+                    
+                    # Customer is CLOSED between closed_start and closed_end
+                    # We can deliver BEFORE closed_start OR AFTER closed_end
+                    # For simplicity, we allow delivery from 0 to closed_start
+                    # (OR-Tools doesn't support disjoint windows easily)
+                    time_windows.append((0, closed_start))
+                    print(f"[OR-Tools] Customer {customer.get('name')} has time constraint: can deliver before {closed_start_str} (0-{closed_start} min)")
+                else:
+                    time_windows.append((0, 24 * 60))
+            else:
+                time_windows.append((0, 24 * 60))  # No restriction
         
         num_locations = len(locations)
         num_vehicles = len(vehicles)
@@ -157,6 +188,35 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             True,
             'Capacity'
         )
+        
+        # Time dimension: travel time + service time
+        def time_callback(from_index, to_index):
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            travel_time = int((distance_matrix[from_node][to_node] / 1000) / 60 * 60)  # 60 km/h avg
+            service_time = SERVICE_TIMES.get(customers[to_node - 1].get("business_type", "default"), SERVICE_TIMES["default"]) if to_node > 0 else 0
+            return travel_time + service_time
+        
+        time_callback_index = routing.RegisterTransitCallback(time_callback)
+        
+        horizon = 24 * 60  # 24 hours in minutes
+        routing.AddDimension(
+            time_callback_index,
+            horizon,  # allow waiting time
+            horizon,  # maximum time per vehicle
+            False,  # Don't force start cumul to zero
+            'Time'
+        )
+        
+        time_dimension = routing.GetDimensionOrDie('Time')
+        
+        # Add time window constraints
+        for location_idx, time_window in enumerate(time_windows):
+            if location_idx == 0:
+                continue  # Skip depot
+            index = manager.NodeToIndex(location_idx)
+            time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1])
+            print(f"[OR-Tools] Set time window for location {location_idx}: [{time_window[0]}, {time_window[1]}]")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (

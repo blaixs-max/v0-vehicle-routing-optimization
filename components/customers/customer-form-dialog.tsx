@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface CustomerFormDialogProps {
   open: boolean
@@ -34,11 +35,9 @@ const getInitialForm = (customer?: Customer | null, depots?: Depot[]) => ({
   lng: customer?.lng?.toString() || "",
   demand_pallets: customer?.demand_pallets?.toString() || "1",
   demand_kg: customer?.demand_kg?.toString() || "800",
-  demand_m3: customer?.demand_m3?.toString() || "2.4", // Hacim talebi eklendi
-  service_duration_min: customer?.service_duration_min?.toString() || "15", // Servis süresi eklendi
-  time_window_start: customer?.time_window_start || "", // Teslimat başlangıç saati
-  time_window_end: customer?.time_window_end || "", // Teslimat bitiş saati
-  required_vehicle_type: customer?.required_vehicle_type || "any", // Araç tipi kısıtı
+  has_time_constraint: customer?.has_time_constraint || false,
+  constraint_start_time: customer?.constraint_start_time || "08:00",
+  constraint_end_time: customer?.constraint_end_time || "19:00",
   priority: customer?.priority?.toString() || "3",
   assigned_depot_id: customer?.assigned_depot_id || depots?.find((d) => d.city === "İstanbul")?.id || "",
   status: (customer?.status || "pending") as Customer["status"],
@@ -71,11 +70,9 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
         lng: Number.parseFloat(form.lng),
         demand_pallets: Number.parseInt(form.demand_pallets),
         demand_kg: Number.parseFloat(form.demand_kg),
-        demand_m3: Number.parseFloat(form.demand_m3),
-        service_duration_min: Number.parseInt(form.service_duration_min),
-        time_window_start: form.time_window_start || null,
-        time_window_end: form.time_window_end || null,
-        required_vehicle_type: form.required_vehicle_type === "any" ? null : form.required_vehicle_type,
+        has_time_constraint: form.has_time_constraint,
+        constraint_start_time: form.has_time_constraint ? form.constraint_start_time : null,
+        constraint_end_time: form.has_time_constraint ? form.constraint_end_time : null,
         priority: Number.parseInt(form.priority),
         assigned_depot_id: form.assigned_depot_id,
         status: form.status,
@@ -221,7 +218,7 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="time_window_start">Teslimat Başlangıç</Label>
               <Input
@@ -242,6 +239,61 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 placeholder="17:00"
               />
             </div>
+          </div>
+
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Zaman Kısıtı</Label>
+                <p className="text-sm text-muted-foreground">Müşterinin teslimat yapılamayacağı saatleri belirleyin</p>
+              </div>
+              <Button
+                type="button"
+                variant={form.has_time_constraint ? "default" : "outline"}
+                size="sm"
+                onClick={() => setForm({ ...form, has_time_constraint: !form.has_time_constraint })}
+              >
+                {form.has_time_constraint ? "Kısıt Var" : "Kısıt Yok"}
+              </Button>
+            </div>
+
+            {form.has_time_constraint && (
+              <div className="grid grid-cols-2 gap-4 pl-4 border-l-2 border-primary">
+                <div className="space-y-2">
+                  <Label htmlFor="constraint_start_time">Kapalı Saat Başlangıç</Label>
+                  <Input
+                    id="constraint_start_time"
+                    type="time"
+                    value={form.constraint_start_time}
+                    onChange={(e) => setForm({ ...form, constraint_start_time: e.target.value })}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">Bu saatten itibaren KAPALI</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="constraint_end_time">Kapalı Saat Bitiş</Label>
+                  <Input
+                    id="constraint_end_time"
+                    type="time"
+                    value={form.constraint_end_time}
+                    onChange={(e) => setForm({ ...form, constraint_end_time: e.target.value })}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">Bu saate kadar KAPALI</p>
+                </div>
+                <div className="col-span-2">
+                  <Alert>
+                    <AlertDescription>
+                      <strong>Örnek:</strong> 08:00 - 19:00 seçildiğinde, teslimat sadece <strong>19:00-08:00</strong>{" "}
+                      arasında (gece/sabah erken) yapılabilir.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="service_duration_min">Boşaltma Süresi (dk)</Label>
               <Input
@@ -252,25 +304,6 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
                 onChange={(e) => setForm({ ...form, service_duration_min: e.target.value })}
                 placeholder="15"
               />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>Araç Tipi Kısıtı</Label>
-              <Select
-                value={form.required_vehicle_type}
-                onValueChange={(v) => setForm({ ...form, required_vehicle_type: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Herhangi Bir Araç</SelectItem>
-                  <SelectItem value="kamyon">Sadece Kamyon</SelectItem>
-                  <SelectItem value="tir">Sadece TIR</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2">
               <Label>Öncelik</Label>
