@@ -31,10 +31,8 @@ import {
 } from "lucide-react"
 import type { Depot, Vehicle, Customer, OptimizationResult } from "@/lib/types"
 import { OptimizationResults } from "./optimization-results"
-import { saveOptimizedRoutes } from "@/lib/route-store"
 import { saveCustomerCoordinates } from "@/lib/customer-store"
 import { MissingCoordinatesDialog } from "@/components/customers/missing-coordinates-dialog"
-import type { MockRoute } from "@/lib/mock-data"
 
 export function OptimizationPanel() {
   const [depots, setDepots] = useState<Depot[]>([])
@@ -63,9 +61,50 @@ export function OptimizationPanel() {
   const [useRealDistances, setUseRealDistances] = useState(true)
   const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ortools")
 
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobStatus, setJobStatus] = useState<string | null>(null)
+  let progressInterval: any
+
   useEffect(() => {
     fetchData()
   }, [])
+
+  useEffect(() => {
+    if (!jobId || jobStatus === "completed" || jobStatus === "failed") return
+
+    progressInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/optimize/jobs?jobId=${jobId}`)
+        const data = await res.json()
+
+        setJobStatus(data.status)
+
+        if (data.status === "completed") {
+          setResult(data.result)
+          setOptimizing(false)
+          setProgress(100)
+          toast({
+            title: "Optimizasyon Tamamlandı",
+            description: `${data.result?.summary?.totalRoutes || 0} rota oluşturuldu.`,
+          })
+        } else if (data.status === "failed") {
+          setOptimizing(false)
+          setOptimizeError(data.error || "Optimizasyon başarısız")
+          toast({
+            title: "Optimizasyon Hatası",
+            description: data.error || "Bilinmeyen hata",
+            variant: "destructive",
+          })
+        } else if (data.status === "processing") {
+          setProgress((prev) => Math.min(prev + 5, 90))
+        }
+      } catch (error) {
+        console.error("[v0] Failed to check job status:", error)
+      }
+    }, 3000) // Poll every 3 seconds
+
+    return () => clearInterval(progressInterval)
+  }, [jobId, jobStatus])
 
   async function fetchData() {
     try {
@@ -184,35 +223,23 @@ export function OptimizationPanel() {
 
     setOptimizing(true)
     setOptimizeError(null)
-    setProgress(0)
+    setProgress(10)
 
-    const progressInterval = setInterval(() => {
-      setProgress((p) => {
-        if (p < 30) return p + 5 // İlk 30% hızlı
-        if (p < 70) return p + 2 // Orta kısım yavaş (Railway processing)
-        if (p < 90) return p + 1 // Son kısım çok yavaş
-        return p
-      })
-    }, 1000) // 1 saniye interval
+    const depotsData = selectedDepots.map((id) => depots.find((d) => d.id === id)).filter(Boolean)
+    const vehiclesData = vehicles.filter((v) => v.status === "available")
+    const customersData = customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
+
+    console.log("[v0] Request body:", {
+      depotsCount: depotsData.length,
+      vehiclesCount: vehiclesData.length,
+      customersCount: customersData.length,
+    })
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 70000)
 
     try {
-      const apiEndpoint = "/api/optimize"
-      console.log("[v0] Calling API:", apiEndpoint)
-
-      const depotsData = selectedDepots.map((id) => depots.find((d) => d.id === id)).filter(Boolean)
-      const vehiclesData = vehicles.filter((v) => v.status === "available")
-      const customersData = customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
-
-      console.log("[v0] Request body:", {
-        depotsCount: depotsData.length,
-        vehiclesCount: vehiclesData.length,
-        customersCount: customersData.length,
-      })
-
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 70000)
-
-      const response = await fetch(apiEndpoint, {
+      const jobRes = await fetch("/api/optimize/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -221,126 +248,35 @@ export function OptimizationPanel() {
           customers: customersData,
           orders,
           algorithm,
-          fuelPrice,
-          maxRouteDistance,
-          maxRouteTime: maxRouteDuration,
+          fuelPricePerLiter: fuelPrice,
+          maxRouteDistanceKm: maxRouteDistance,
+          maxRouteTimeMin: maxRouteDuration,
         }),
-        signal: controller.signal,
       })
 
-      clearTimeout(timeoutId)
-      clearInterval(progressInterval)
-
-      console.log("[v0] Response status:", response.status)
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("[v0] API error response:", errorText)
-
-        let errorMessage = "Optimizasyon başarısız"
-        try {
-          const errorData = JSON.parse(errorText)
-          errorMessage = errorData.error || errorData.message || errorMessage
-        } catch {
-          errorMessage = errorText || errorMessage
-        }
-
-        throw new Error(errorMessage)
+      if (!jobRes.ok) {
+        throw new Error("Job oluşturulamadı")
       }
 
-      const data = await response.json()
-      console.log("[v0] Optimization result:", data)
+      const jobData = await jobRes.json()
+      setJobId(jobData.jobId)
+      setJobStatus("pending")
+      setProgress(20)
 
-      if (!data || !data.routes || !Array.isArray(data.routes)) {
-        console.error("[v0] Invalid response format:", data)
-        throw new Error("Sunucudan geçersiz yanıt alındı")
-      }
-
-      setResult(data)
-      setProgress(100)
+      fetch("/api/optimize/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: jobData.jobId }),
+      }).catch((err) => console.error("[v0] Failed to start processing:", err))
 
       toast({
-        title: "Başarılı",
-        description: `${data.routes?.length || 0} rota oluşturuldu`,
+        title: "Optimizasyon Başlatıldı",
+        description: "Sonuçları beklerken sayfada kalabilirsiniz.",
       })
-
-      const mockRoutes: MockRoute[] = data.routes.map((route: any, index: number) => {
-        const depot = depots.find((d) => d.id === route.depotId)
-        const vehicle = vehicles.find((v) => v.id === route.vehicleId)
-
-        const totalDistanceValue =
-          typeof route.totalDistance !== "undefined"
-            ? route.totalDistance
-            : typeof route.distance !== "undefined"
-              ? route.distance
-              : 0
-
-        const totalDurationValue =
-          typeof route.totalDuration !== "undefined"
-            ? route.totalDuration
-            : typeof route.duration !== "undefined"
-              ? route.duration
-              : 0
-
-        const fuelCostValue = route.fuelCost ?? 0
-        const distanceCostValue = route.distanceCost ?? 0
-        const fixedCostValue = route.fixedCost ?? 0
-        const tollCostValue = route.tollCost ?? 0
-        const totalCostValue = route.totalCost ?? fuelCostValue + distanceCostValue + fixedCostValue + tollCostValue
-
-        const routeStops = !route.stops || !Array.isArray(route.stops) ? [] : route.stops
-
-        return {
-          id: `route-${index + 1}`,
-          vehicle_id: route.vehicleId,
-          vehicle_plate: vehicle?.plate || `Arac ${index + 1}`,
-          depot_id: route.depotId,
-          depot_name: depot?.name || depot?.city || "Depo",
-          status: "pending" as const,
-          total_distance_km: totalDistanceValue,
-          total_duration_min: totalDurationValue,
-          total_cost: totalCostValue,
-          fuel_cost: fuelCostValue,
-          distance_cost: distanceCostValue,
-          fixed_cost: fixedCostValue,
-          toll_cost: tollCostValue,
-          stops: routeStops.map((stop: any, stopIndex: number) => {
-            const customer = customers.find((c) => c.id === stop.customerId)
-            return {
-              customer_id: stop.customerId,
-              customer_name: customer?.name || stop.customerName || `Musteri ${stopIndex + 1}`,
-              order: stopIndex + 1,
-              sequence: stopIndex + 1,
-              arrival_time: stop.arrivalTime || `${8 + stopIndex}:00`,
-              service_time: stop.serviceTime || 15,
-              demand: stop.demand || customer?.demand_pallet || 0,
-              lat: stop.lat || customer?.lat || 0,
-              lng: stop.lng || customer?.lng || 0,
-              address: stop.address || customer?.address || "",
-            }
-          }),
-          geometry: route.geometry || null,
-        }
-      })
-
-      const summaryData = {
-        totalRoutes: mockRoutes.length,
-        totalDistance:
-          data.summary?.totalDistance || mockRoutes.reduce((sum, r) => sum + (r.total_distance_km || 0), 0),
-        totalDuration:
-          data.summary?.totalDuration || mockRoutes.reduce((sum, r) => sum + (r.total_duration_min || 0), 0),
-        totalCost: data.summary?.totalCost || mockRoutes.reduce((sum, r) => sum + (r.total_cost || 0), 0),
-        fuelCost: data.summary?.fuelCost || mockRoutes.reduce((sum, r) => sum + (r.fuel_cost || 0), 0),
-        distanceCost: data.summary?.distanceCost || mockRoutes.reduce((sum, r) => sum + (r.distance_cost || 0), 0),
-        fixedCost: data.summary?.fixedCost || mockRoutes.reduce((sum, r) => sum + (r.fixed_cost || 0), 0),
-        tollCost: data.summary?.tollCost || mockRoutes.reduce((sum, r) => sum + (r.toll_cost || 0), 0),
-      }
-
-      saveOptimizedRoutes(mockRoutes, summaryData, data.provider || "openrouteservice")
-    } catch (err: any) {
+    } catch (error: any) {
       clearInterval(progressInterval)
 
-      if (err.name === "AbortError") {
+      if (error.name === "AbortError") {
         setOptimizeError("İstek zaman aşımına uğradı. Railway sunucusu yanıt vermedi. Lütfen tekrar deneyin.")
         toast({
           title: "Zaman Aşımı",
@@ -348,10 +284,10 @@ export function OptimizationPanel() {
           variant: "destructive",
         })
       } else {
-        setOptimizeError(err instanceof Error ? err.message : "Bilinmeyen hata")
+        setOptimizeError(error instanceof Error ? error.message : "Bilinmeyen hata")
         toast({
           title: "Hata",
-          description: err instanceof Error ? err.message : "Bilinmeyen hata",
+          description: error instanceof Error ? error.message : "Bilinmeyen hata",
           variant: "destructive",
         })
       }
