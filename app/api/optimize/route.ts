@@ -534,7 +534,13 @@ async function optimizeWithRailway(
 
     const formattedRoutes = railwayResult.routes.map((route: any, index: number) => ({
       vehicleId: route.vehicle_id || `vehicle-${index}`,
-      vehiclePlate: route.license_plate || route.plate || `Araç ${index + 1}`,
+      vehiclePlate: (() => {
+        const plate = route.license_plate || route.plate || `Araç ${index + 1}`
+        console.log(
+          `[v0] Route ${index} plate from Railway: license_plate=${route.license_plate}, plate=${route.plate}, using=${plate}`,
+        )
+        return plate
+      })(),
       vehicleType: route.vehicle_type || "Kamyon",
       depotId: route.depot_id,
       depotName: route.depot_name || depotMap.get(route.depot_id)?.name || "Depo",
