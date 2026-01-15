@@ -266,6 +266,12 @@ export function OptimizationPanel() {
     const vehiclesData = vehicles.filter((v) => v.status === "available")
     const customersData = customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
 
+    console.log("[v0] About to create job with:", {
+      depotsCount: depotsData.length,
+      vehiclesCount: vehiclesData.length,
+      customersCount: customersData.length,
+    })
+
     try {
       const jobRes = await fetch("/api/optimize/jobs", {
         method: "POST",
