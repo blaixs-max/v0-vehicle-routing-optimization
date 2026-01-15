@@ -538,7 +538,8 @@ async function optimizeWithRailway(
       depotId: route.depot_id,
       depotName: route.depot_name || depotMap.get(route.depot_id)?.name || "Depo",
       totalDistance: route.total_distance_km || 0,
-      totalDuration: route.total_duration_min || Math.round((route.total_distance_km / 60) * 60) || 0,
+      totalDuration:
+        route.duration_minutes || route.total_duration_min || Math.round((route.total_distance_km / 60) * 60) || 0,
       totalCost: route.total_cost || 0,
       totalPallets: route.total_load || route.total_pallets || 0,
       fuelCost: route.fuel_cost || 0,
