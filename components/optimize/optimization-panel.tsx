@@ -65,6 +65,13 @@ export function OptimizationPanel() {
   const [jobStatus, setJobStatus] = useState<string | null>(null)
   let progressInterval: any
 
+  const availableVehicles = vehicles.filter((v) => selectedDepots.includes(v.depot_id || ""))
+  const totalCapacity = availableVehicles.reduce((sum, v) => sum + (v.capacity_pallets || 0), 0)
+  const totalDemand = orders.reduce((sum, o) => sum + o.pallets, 0)
+  const missingCoords = customers
+    .filter((c) => orders.some((o) => o.customerId === c.id))
+    .filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
+
   useEffect(() => {
     fetchData()
   }, [])
@@ -105,6 +112,12 @@ export function OptimizationPanel() {
 
     return () => clearInterval(progressInterval)
   }, [jobId, jobStatus])
+
+  useEffect(() => {
+    console.log("[v0] availableVehicles:", availableVehicles.length)
+    console.log("[v0] optimizing:", optimizing)
+    console.log("[v0] Button disabled:", optimizing || availableVehicles.length === 0)
+  }, [availableVehicles, optimizing])
 
   async function fetchData() {
     try {
@@ -343,12 +356,6 @@ export function OptimizationPanel() {
   }
 
   const activeDepots = depots.filter((d) => selectedDepots.includes(d.id))
-  const availableVehicles = vehicles.filter((v) => selectedDepots.includes(v.depot_id || ""))
-  const totalCapacity = availableVehicles.reduce((sum, v) => sum + (v.capacity_pallets || 0), 0)
-  const totalDemand = orders.reduce((sum, o) => sum + o.pallets, 0)
-  const missingCoords = customers
-    .filter((c) => orders.some((o) => o.customerId === c.id))
-    .filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
 
   if (loading) {
     return (
