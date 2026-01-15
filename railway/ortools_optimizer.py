@@ -72,23 +72,14 @@ def parse_time_constraint(constraint: str) -> tuple:
     return (0, 24 * 60)
 
 def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: float = 47.50) -> dict:
-    """Multi-depot VRP optimizer with single-depot fallback"""
-    
-    if len(depots) > 1:
-        try:
-            print(f"[OR-Tools] Attempting multi-depot optimization with {len(depots)} depots...")
-            return _optimize_multi_depot(depots, customers, vehicles, fuel_price)
-        except Exception as e:
-            print(f"[OR-Tools] Multi-depot failed: {e}")
-            print(f"[OR-Tools] Falling back to single-depot mode...")
-            # Use first depot as primary
-            return _optimize_single_depot(depots[0], depots, customers, vehicles, fuel_price)
-    else:
-        return _optimize_single_depot(depots[0], depots, customers, vehicles, fuel_price)
+    """Simplified single-depot VRP optimizer for fastest results"""
+    return _optimize_single_depot(depots[0], depots, customers, vehicles, fuel_price)
 
 def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: list, vehicles: list, fuel_price: float) -> dict:
     """Single depot optimization (stable fallback)"""
     try:
+        total_distance = 0
+        
         print(f"[OR-Tools] Starting single-depot optimization...")
         print(f"[OR-Tools] Primary depot: {primary_depot.get('name', primary_depot.get('id'))}")
         print(f"[OR-Tools] Customers: {len(customers)}")
@@ -103,7 +94,6 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         # Locations: depot + customers
         locations = [(depot_lat, depot_lng)]
         demands = [0]
-        time_windows = [(0, 24 * 60)]  # Depot has no time restriction (full day)
         service_times_list = [0]  # Store service times for each location
         
         for customer in customers:
@@ -118,22 +108,6 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             demands.append(customer.get("demand_pallets", 1))
             service_duration = customer.get("service_duration", 15)  # Default 15 minutes
             service_times_list.append(service_duration)
-            
-            has_constraint = customer.get("has_time_constraint", False)
-            if has_constraint:
-                closed_start_str = customer.get("constraint_start_time")
-                closed_end_str = customer.get("constraint_end_time")
-                
-                if closed_start_str and closed_end_str:
-                    closed_start = time_to_minutes(closed_start_str)
-                    closed_end = time_to_minutes(closed_end_str)
-                    
-                    time_windows.append((0, closed_start))
-                    print(f"[OR-Tools] Customer {customer.get('name')} has time constraint: can deliver before {closed_start_str} (0-{closed_start} min)")
-                else:
-                    time_windows.append((0, 24 * 60))
-            else:
-                time_windows.append((0, 24 * 60))
         
         num_locations = len(locations)
         num_vehicles = len(vehicles)
@@ -188,59 +162,21 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             'Capacity'
         )
         
-        # Time dimension: travel time + service time
-        def time_callback(from_index, to_index):
-            """Calculate travel + service time between nodes"""
-            try:
-                from_node = manager.IndexToNode(from_index)
-                to_node = manager.IndexToNode(to_index)
-                
-                # Travel time (distance in meters / 60 km/h = minutes)
-                travel_time_minutes = (distance_matrix[from_node][to_node] / 1000) / 60 * 60
-                
-                service_time_minutes = service_times_list[to_node] if to_node < len(service_times_list) else 15
-                
-                return int(travel_time_minutes + service_time_minutes)
-            except Exception as e:
-                print(f"[OR-Tools] ERROR in time_callback: {e}")
-                return 999999
+        print(f"[OR-Tools] Capacity dimension added")
         
-        time_callback_index = routing.RegisterTransitCallback(time_callback)
+        # routing.AddDimension(...)
+        # time_dimension = routing.GetDimensionOrDie('Time')
         
-        # Time dimension: max 600 minutes per route (10 hours total including breaks)
-        routing.AddDimension(
-            time_callback_index,
-            0,  # No slack
-            600,  # Max 600 minutes (10 hours) per vehicle
-            True,  # Start cumul to zero
-            'Time'
-        )
-        time_dimension = routing.GetDimensionOrDie('Time')
-        
-        print(f"[OR-Tools] Time dimension added (max 10h per route, breaks included in route time)")
-        
-        # Add time window constraints
-        # for location_idx, time_window in enumerate(time_windows):
-        #     if location_idx == 0:
-        #         continue  # Skip depot
-        #     index = manager.NodeToIndex(location_idx)
-        #     time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1])
-        #     print(f"[OR-Tools] Set time window for location {location_idx}: [{time_window[0]}, {time_window[1]}]")
-        
-        print(f"[OR-Tools] Time window constraints DISABLED for testing - only using time dimension for route duration limit")
+        print(f"[OR-Tools] Using DISTANCE-ONLY optimization (no time constraints)")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC  # Let OR-Tools choose fastest
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC  # Fast and reliable
         )
-        # search_parameters.local_search_metaheuristic = (
-        #     routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT
-        # )
-        search_parameters.time_limit.seconds = 30
+        search_parameters.time_limit.seconds = 20
         search_parameters.log_search = True
-        search_parameters.solution_limit = 1
         
-        print(f"[OR-Tools] Solving routing problem with AUTOMATIC strategy + first solution only...")
+        print(f"[OR-Tools] Solving with PATH_CHEAPEST_ARC strategy (20s limit)...")
         
         solution = routing.SolveWithParameters(search_parameters)
         
@@ -263,7 +199,6 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             route_distance = 0
             route_stops = []
             stop_order = 1
-            cumulative_time = 0  # minutes from depot
             cumulative_load = 0  # pallets
             
             while not routing.IsEnd(index):
@@ -287,8 +222,6 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                         )
                         travel_time = (distance_from_prev / 60) * 60
                     
-                    cumulative_time += travel_time
-                    service_time_min = service_times_list[node_index]  # Use precomputed service time
                     cumulative_load += customer["demand_pallets"]
                     
                     route_stops.append({
@@ -296,14 +229,11 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                         "customer_name": customer["name"],
                         "location": customer["location"],
                         "demand": customer["demand_pallets"],
-                        "service_time": service_time_min,
                         "stopOrder": stop_order,  # Stop sequence number
-                        "arrivalTime": round(cumulative_time, 1),  # Cumulative minutes from depot
                         "cumulativeLoad": cumulative_load,  # Total pallets loaded so far
                         "distanceFromPrev": round(distance_from_prev, 2)  # km from previous stop
                     })
                     
-                    cumulative_time += service_time_min
                     stop_order += 1
                 
                 previous_index = index
@@ -314,9 +244,6 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 route_distance_km = route_distance / 1000
                 vehicle = vehicles[vehicle_id]
                 fuel_consumption = VEHICLE_TYPES[vehicle["type"]]["fuel"]
-                
-                route_duration_minutes = (route_distance_km / 60) * 60
-                route_duration_minutes += sum(s["service_time"] for s in route_stops)
                 
                 fuel_cost = (route_distance_km / 100) * fuel_consumption * fuel_price
                 distance_cost = route_distance_km * 2.5
@@ -331,7 +258,6 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                     "depot_name": primary_depot.get("name", primary_depot["id"]),
                     "stops": route_stops,
                     "distance_km": round(route_distance_km, 2),
-                    "duration_minutes": round(route_duration_minutes, 2),
                     "fuel_cost": round(fuel_cost, 2),
                     "distance_cost": round(distance_cost, 2),
                     "fixed_cost": round(fixed_cost, 2),
