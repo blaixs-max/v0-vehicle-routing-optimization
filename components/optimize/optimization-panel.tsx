@@ -145,12 +145,19 @@ export function OptimizationPanel() {
   }
 
   async function handleOptimize() {
+    console.log("[v0] ========== handleOptimize called ==========")
+    console.log("[v0] Selected depots:", selectedDepots.length)
+    console.log("[v0] Algorithm:", algorithm)
+    console.log("[v0] Available vehicles:", availableVehicles.length)
+
     if (selectedDepots.length === 0) {
       toast({ description: "En az bir depo seçmelisiniz" })
       return
     }
 
     const customersToOptimize = selectedCustomers.length > 0 ? selectedCustomers : customers.map((c) => c.id)
+
+    console.log("[v0] Customers to optimize:", customersToOptimize.length)
 
     if (customersToOptimize.length === 0) {
       toast({ description: "Optimize edilecek müşteri bulunamadı" })
@@ -162,6 +169,7 @@ export function OptimizationPanel() {
       .filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
 
     if (missingCoords.length > 0) {
+      console.log("[v0] Missing coordinates for", missingCoords.length, "customers")
       setMissingCoordinatesCustomers(missingCoords)
       setShowMissingCoordinatesDialog(true)
       toast({
@@ -172,6 +180,7 @@ export function OptimizationPanel() {
       return
     }
 
+    console.log("[v0] All validation passed, starting optimization...")
     setOptimizing(true)
     setOptimizeError(null)
     setProgress(10)
@@ -181,7 +190,16 @@ export function OptimizationPanel() {
     const vehiclesData = vehicles.filter((v) => v.status === "available")
     const customersData = customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
 
+    console.log("[v0] Sending to API:", {
+      depots: depotsData.length,
+      vehicles: vehiclesData.length,
+      customers: customersData.length,
+      orders: orders.length,
+      algorithm,
+    })
+
     try {
+      console.log("[v0] Fetching /api/optimize...")
       const response = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -197,12 +215,16 @@ export function OptimizationPanel() {
         }),
       })
 
+      console.log("[v0] API response status:", response.status)
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
+        console.error("[v0] API error:", errorData)
         throw new Error(errorData.error || "Optimization failed")
       }
 
       const result = await response.json()
+      console.log("[v0] Optimization result received:", result.routes?.length, "routes")
 
       setResult(result)
       setOptimizing(false)
@@ -212,6 +234,7 @@ export function OptimizationPanel() {
         description: `${result.routes?.length || 0} rota oluşturuldu`,
       })
     } catch (error: any) {
+      console.error("[v0] Optimization error:", error)
       setOptimizing(false)
       setOptimizeError(error instanceof Error ? error.message : "Bilinmeyen hata")
       toast({
