@@ -231,15 +231,16 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC  # Fast and reliable
+            routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC  # Let OR-Tools choose fastest
         )
-        search_parameters.local_search_metaheuristic = (
-            routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT  # Faster than GUIDED_LOCAL_SEARCH
-        )
-        search_parameters.time_limit.seconds = 45  # Must be under 60s for Vercel
+        # search_parameters.local_search_metaheuristic = (
+        #     routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT
+        # )
+        search_parameters.time_limit.seconds = 30
         search_parameters.log_search = True
+        search_parameters.solution_limit = 1
         
-        print(f"[OR-Tools] Solving routing problem with PATH_CHEAPEST_ARC + GREEDY_DESCENT...")
+        print(f"[OR-Tools] Solving routing problem with AUTOMATIC strategy + first solution only...")
         
         solution = routing.SolveWithParameters(search_parameters)
         
@@ -526,15 +527,16 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC  # Fast and reliable
+            routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC  # Let OR-Tools choose fastest
         )
-        search_parameters.local_search_metaheuristic = (
-            routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT  # Faster than GUIDED_LOCAL_SEARCH
-        )
-        search_parameters.time_limit.seconds = 45  # Must be under 60s for Vercel
+        # search_parameters.local_search_metaheuristic = (
+        #     routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT
+        # )
+        search_parameters.time_limit.seconds = 30
         search_parameters.log_search = True
+        search_parameters.solution_limit = 1
         
-        print(f"[OR-Tools] Starting solver with 45s timeout and solution limit 100...")
+        print(f"[OR-Tools] Starting solver with 30s timeout and solution limit 1...")
         solution = routing.SolveWithParameters(search_parameters)
         
         if not solution:
