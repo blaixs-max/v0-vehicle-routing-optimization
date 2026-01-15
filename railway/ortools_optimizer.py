@@ -229,15 +229,17 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC  # More reliable than AUTOMATIC
+            routing_enums_pb2.FirstSolutionStrategy.SAVINGS
         )
         search_parameters.local_search_metaheuristic = (
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         )
-        search_parameters.time_limit.seconds = 60
+        search_parameters.time_limit.seconds = 600
+        search_parameters.solution_limit = 100
         search_parameters.log_search = True
         
-        print(f"[OR-Tools] Solving routing problem...")
+        print(f"[OR-Tools] Solving routing problem with SAVINGS strategy...")
+        
         solution = routing.SolveWithParameters(search_parameters)
         
         if not solution:
@@ -518,15 +520,16 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC  # More reliable than AUTOMATIC
+            routing_enums_pb2.FirstSolutionStrategy.SAVINGS
         )
         search_parameters.local_search_metaheuristic = (
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         )
-        search_parameters.time_limit.seconds = 60
+        search_parameters.time_limit.seconds = 600
+        search_parameters.solution_limit = 100
         search_parameters.log_search = True
         
-        print(f"[OR-Tools] Starting solver with 60s timeout...")
+        print(f"[OR-Tools] Starting solver with 600s timeout and solution limit 100...")
         solution = routing.SolveWithParameters(search_parameters)
         
         if not solution:
