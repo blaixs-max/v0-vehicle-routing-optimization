@@ -257,6 +257,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 
                 routes.append({
                     "vehicle_id": vehicle["id"],
+                    "plate": vehicle.get("plate", f"Araç {vehicle_id + 1}"),
                     "vehicle_type": vehicle["type"],
                     "depot_id": primary_depot["id"],
                     "depot_name": primary_depot.get("name", primary_depot["id"]),
@@ -567,6 +568,7 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
                 
                 routes.append({
                     "vehicle_id": vehicle["id"],
+                    "plate": vehicle.get("plate", f"Araç {vehicle_id + 1}"),
                     "vehicle_type": vehicle["type"],
                     "depot_id": vehicle_depot["id"],
                     "depot_name": vehicle_depot.get("name", vehicle_depot["id"]),
