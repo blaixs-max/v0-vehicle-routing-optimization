@@ -28,7 +28,24 @@ export async function POST(request: Request) {
     const requestData = jobResult[0].request_data
     const startTime = Date.now()
 
+    console.log("[v0] Processing job with data:", {
+      depots: requestData.depots?.length,
+      vehicles: requestData.vehicles?.length,
+      customers: requestData.customers?.length,
+      orders: requestData.orders?.length,
+    })
+
     try {
+      if (!requestData.depots || requestData.depots.length === 0) {
+        throw new Error("No depots provided")
+      }
+      if (!requestData.vehicles || requestData.vehicles.length === 0) {
+        throw new Error("No vehicles provided")
+      }
+      if (!requestData.customers || requestData.customers.length === 0) {
+        throw new Error("No customers provided")
+      }
+
       const railwayRequest = {
         depots: requestData.depots.map((d: any) => ({
           id: d.id,
@@ -47,7 +64,6 @@ export async function POST(request: Request) {
                   : 3,
           capacity_pallets: v.capacity_pallets,
           fuel_consumption: v.fuel_consumption_per_100km,
-          depot_id: v.assigned_depot_id,
         })),
         customers: requestData.customers.map((c: any) => {
           const order = requestData.orders?.find((o: any) => o.customer_id === c.id)
@@ -72,7 +88,13 @@ export async function POST(request: Request) {
         max_route_time_min: requestData.maxRouteTimeMin || 600,
       }
 
-      console.log("[v0] Sending to Railway:", JSON.stringify(railwayRequest).substring(0, 500))
+      console.log("[v0] Railway request summary:", {
+        depots: railwayRequest.depots.length,
+        vehicles: railwayRequest.vehicles.length,
+        customers: railwayRequest.customers.length,
+        sampleCustomer: railwayRequest.customers[0],
+        sampleVehicle: railwayRequest.vehicles[0],
+      })
 
       const optimizeResponse = await fetch(`${process.env.RAILWAY_API_URL}/optimize`, {
         method: "POST",
@@ -82,6 +104,7 @@ export async function POST(request: Request) {
 
       if (!optimizeResponse.ok) {
         const errorText = await optimizeResponse.text()
+        console.error("[v0] Railway error response:", errorText)
         throw new Error(`Railway error: ${errorText}`)
       }
 
