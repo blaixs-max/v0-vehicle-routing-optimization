@@ -4,8 +4,17 @@ import { neon } from "@neondatabase/serverless"
 const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: Request) {
+  console.log("[v0] POST /api/optimize/jobs called")
   try {
     const requestData = await request.json()
+    console.log(
+      "[v0] Request data received, depots:",
+      requestData.depots?.length,
+      "vehicles:",
+      requestData.vehicles?.length,
+      "customers:",
+      requestData.customers?.length,
+    )
 
     const result = await sql`
       INSERT INTO optimization_jobs (request_data, status)
@@ -14,6 +23,7 @@ export async function POST(request: Request) {
     `
 
     const job = result[0]
+    console.log("[v0] Job created:", job.id)
 
     return NextResponse.json({
       jobId: job.id,
