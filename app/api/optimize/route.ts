@@ -390,13 +390,8 @@ async function optimizeWithRailway(
   vehicles: any[],
   customers: any[],
   orders: any[],
-  options: {
-    algorithm?: "ortools" | "local"
-    fuelPricePerLiter?: number
-    maxRouteDistanceKm?: number
-    maxRouteTimeMin?: number
-  },
-) {
+  options: any,
+): Promise<any> {
   console.log("[v0] Starting Railway optimization with OR-Tools")
 
   if (!process.env.RAILWAY_API_URL) {
@@ -531,49 +526,38 @@ async function optimizeWithRailway(
     const customerMap = new Map(customers.map((c) => [c.id, c]))
     const depotMap = new Map(depots.map((d) => [d.id, d]))
 
-    const formattedRoutes = railwayResult.routes.map((route: any, index: number) => {
-      const vehicle = vehicleMap.get(route.vehicle_id)
-      const depot = findNearestDepot(route.stops[0], depots)
-
-      const estimatedDurationMinutes = Math.round((route.total_distance_km / 60) * 60)
-
-      return {
-        vehicleId: route.vehicle_id || vehicle?.id || `vehicle-${index}`,
-        vehiclePlate: vehicle?.plate || vehicle?.license_plate || `Araç ${index + 1}`,
-        vehicleType: vehicle?.vehicle_type || "Kamyon",
-        depotId: depot?.id,
-        depotName: depot?.name || depot?.city,
-        totalDistance: route.total_distance_km || 0,
-        totalDuration: estimatedDurationMinutes, // Estimated duration
-        totalCost: route.total_cost || 0,
-        totalPallets: route.total_load || 0,
-        fuelCost: route.fuel_cost || 0,
-        distanceCost: route.distance_cost || 0,
-        fixedCost: route.fixed_cost || 0,
-        tollCost: route.toll_cost || 0,
-        stops: route.stops.map((stop: any, stopIndex: number) => {
-          const customer = customerMap.get(stop.customer_id)
-          const order = orders.find((o: any) => o.customerId === stop.customer_id)
-          return {
-            stopOrder: stopIndex + 1,
-            customerId: stop.customer_id,
-            customerName: customer?.name || `Customer ${stopIndex + 1}`,
-            address: customer?.address || "",
-            lat: customer?.lat || 0,
-            lng: customer?.lng || 0,
-            latitude: customer?.lat || 0,
-            longitude: customer?.lng || 0,
-            demand: order?.pallets || 0,
-            distanceFromPrev: stop.distance_from_prev_km || 0,
-            durationFromPrev: Math.round((stop.distance_from_prev_km / 60) * 60) || 0, // Estimated duration
-            cumulativeDistance: stop.cumulative_distance_km || 0,
-            cumulativeLoad: stop.cumulative_load || 0,
-            arrivalTime: stop.arrival_time || null,
-          }
-        }),
-        geometry: route.geometry || [], // Include geometry if available
-      }
-    })
+    const formattedRoutes = railwayResult.routes.map((route: any, index: number) => ({
+      vehicleId: route.vehicle_id || `vehicle-${index}`,
+      vehiclePlate: route.license_plate || route.plate || `Araç ${index + 1}`,
+      vehicleType: route.vehicle_type || "Kamyon",
+      depotId: route.depot_id,
+      depotName: route.depot_name || depotMap.get(route.depot_id)?.name || "Depo",
+      totalDistance: route.total_distance_km || 0,
+      totalDuration: route.total_duration_min || Math.round((route.total_distance_km / 60) * 60) || 0,
+      totalCost: route.total_cost || 0,
+      totalPallets: route.total_load || route.total_pallets || 0,
+      fuelCost: route.fuel_cost || 0,
+      distanceCost: route.distance_cost || 0,
+      fixedCost: route.fixed_cost || 0,
+      tollCost: route.toll_cost || 0,
+      stops: (route.stops || []).map((stop: any, stopIndex: number) => ({
+        stopOrder: stopIndex + 1,
+        customerId: stop.customer_id,
+        customerName: stop.customer_name || customerMap.get(stop.customer_id)?.name || `Customer ${stopIndex + 1}`,
+        address: stop.address || customerMap.get(stop.customer_id)?.address || "",
+        lat: stop.lat || stop.latitude || 0,
+        lng: stop.lng || stop.longitude || 0,
+        latitude: stop.lat || stop.latitude || 0,
+        longitude: stop.lng || stop.longitude || 0,
+        demand: stop.demand || stop.pallets || 0,
+        distanceFromPrev: stop.distance_from_prev_km || 0,
+        durationFromPrev: stop.duration_from_prev_min || 0,
+        cumulativeDistance: stop.cumulative_distance_km || 0,
+        cumulativeLoad: stop.cumulative_load || 0,
+        arrivalTime: stop.arrival_time || null,
+      })),
+      geometry: route.geometry || [], // Include geometry if available
+    }))
 
     const totalDuration = formattedRoutes.reduce((sum: number, route: any) => sum + (route.totalDuration || 0), 0)
 
@@ -583,15 +567,15 @@ async function optimizeWithRailway(
       provider: "ortools-railway",
       summary: {
         totalRoutes: formattedRoutes.length,
-        totalDistance: Math.round((railwayResult.total_distance_km || 0) * 10) / 10,
+        totalDistance: railwayResult.total_distance_km || railwayResult.summary?.total_distance_km || 0,
         totalDuration: totalDuration,
-        totalCost: Math.round((railwayResult.total_cost || 0) * 100) / 100,
-        fuelCost: Math.round((railwayResult.total_fuel_cost || railwayResult.fuel_cost || 0) * 100) / 100,
-        fixedCost: Math.round((railwayResult.total_fixed_cost || railwayResult.fixed_cost || 0) * 100) / 100,
-        distanceCost: Math.round((railwayResult.total_distance_cost || railwayResult.distance_cost || 0) * 100) / 100,
-        tollCost: Math.round((railwayResult.total_toll_cost || railwayResult.toll_cost || 0) * 100) / 100,
+        totalCost: railwayResult.total_cost || railwayResult.summary?.total_cost || 0,
+        fuelCost: railwayResult.total_fuel_cost || railwayResult.summary?.fuel_cost || 0,
+        fixedCost: railwayResult.total_fixed_cost || railwayResult.summary?.fixed_cost || 0,
+        distanceCost: railwayResult.total_distance_cost || railwayResult.summary?.distance_cost || 0,
+        tollCost: railwayResult.total_toll_cost || railwayResult.summary?.toll_cost || 0,
         unassignedCount: 0,
-        computationTimeMs: Date.now() - options.algorithm ? 0 : Date.now(), // Add computation time
+        computationTimeMs: 0,
       },
       routes: formattedRoutes,
       unassigned: [],
