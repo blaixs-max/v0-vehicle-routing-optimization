@@ -87,6 +87,7 @@ export function OptimizationPanel() {
         setJobStatus(data.status)
 
         if (data.status === "completed") {
+          console.log("[v0] Job completed, result:", data.result) // Debug log eklendi
           setResult(data.result)
           setOptimizing(false)
           setProgress(100)
