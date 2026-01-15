@@ -446,20 +446,8 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         
         print(f"[OR-Tools] Time dimension added (max 10h per route, breaks included in route time)")
         
-        # Add time window constraints
-        time_windows = [(0, 24 * 60)] * num_locations  # Default time window for all locations
-        for i, customer in enumerate(customers):
-            time_window = parse_time_constraint(customer.get("time_constraint", ""))
-            time_windows.append(time_window)
-        
-        for location_idx, time_window in enumerate(time_windows):
-            if location_idx == 0:
-                continue  # Skip depot
-            index = manager.NodeToIndex(location_idx)
-            time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1])
-            print(f"[OR-Tools] Set time window for location {location_idx}: [{time_window[0]}, {time_window[1]}]")
-        
-        print(f"[OR-Tools] Time window constraints ENABLED - customers must be visited within their time windows")
+        # Time window constraints: completely disabled
+        print(f"[OR-Tools] Time window constraints DISABLED - no time restrictions applied")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
