@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { neon } from "@neondatabase/serverless"
 
-console.log("[v0] OPTIMIZE ROUTE MODULE LOADED")
-console.log("[v0] RAILWAY_API_URL:", process.env.RAILWAY_API_URL)
+const sql = neon(process.env.DATABASE_URL!)
 
 async function optimizeWithRailway(
   depots: any[],
@@ -10,8 +10,6 @@ async function optimizeWithRailway(
   orders: any[],
   options: any,
 ): Promise<any> {
-  console.log("[v0] ==========  RAILWAY OPTIMIZATION STARTING ==========")
-
   if (!process.env.RAILWAY_API_URL) {
     throw new Error("Railway API URL not configured")
   }
@@ -39,12 +37,10 @@ async function optimizeWithRailway(
       type: 2,
       capacity_pallets: v.capacity_pallet || 12,
       fuel_consumption: v.fuel_consumption || 25,
-      plate: v.plate || v.license_plate || `${v.id}`,
+      plate: v.plate || v.license_plate || `Araç ${v.id}`,
     })),
     fuel_price: options.fuelPricePerLiter || 47.5,
   }
-
-  console.log("[v0] Railway request prepared, calling API...")
 
   const railwayResponse = await fetch(`${process.env.RAILWAY_API_URL}/optimize`, {
     method: "POST",
@@ -58,36 +54,70 @@ async function optimizeWithRailway(
   }
 
   const railwayResult = await railwayResponse.json()
-  console.log("[v0] Railway optimization completed successfully")
+
+  const formattedRoutes = (railwayResult.routes || []).map((route: any, index: number) => ({
+    id: `route-${index + 1}`,
+    vehicleId: route.vehicle_id || `v-${index + 1}`,
+    vehiclePlate: route.plate || route.license_plate || `Araç ${index + 1}`,
+    totalDistance: route.distance_km || route.total_distance_km || 0,
+    totalDuration: route.duration_minutes || (route.distance_km ? Math.round((route.distance_km / 60) * 60) : 0),
+    totalCost: route.total_cost || 0,
+    totalLoad: route.total_pallets || 0,
+    fuelCost: route.fuel_cost || 0,
+    maintenanceCost: route.maintenance_cost || 0,
+    driverCost: route.driver_cost || 0,
+    otherCosts: route.other_costs || 0,
+    stops: (route.stops || []).map((stop: any) => ({
+      id: stop.customer_id || stop.id,
+      customerId: stop.customer_id,
+      customerName: stop.customer_name || stop.name,
+      location: stop.location || { lat: 0, lng: 0 },
+      arrivalTime: stop.arrival_time,
+      departureTime: stop.departure_time,
+      pallets: stop.pallets || stop.load || 0,
+      distanceFromPrev: stop.distanceFromPrev || stop.distance_from_prev_km || 0,
+      durationFromPrev: stop.durationFromPrev || stop.duration_from_prev_min || 0,
+      cumulativeDistance: stop.cumulativeDistance || stop.cumulative_distance_km || 0,
+      cumulativeLoad: stop.cumulativeLoad || stop.cumulative_load || 0,
+    })),
+    geometry: route.geometry || null,
+  }))
+
+  const summary = {
+    totalCost: formattedRoutes.reduce((sum: number, r: any) => sum + (r.totalCost || 0), 0),
+    totalDistance: formattedRoutes.reduce((sum: number, r: any) => sum + (r.totalDistance || 0), 0),
+    totalDuration: formattedRoutes.reduce((sum: number, r: any) => sum + (r.totalDuration || 0), 0),
+    fuelCost: formattedRoutes.reduce((sum: number, r: any) => sum + (r.fuelCost || 0), 0),
+    maintenanceCost: formattedRoutes.reduce((sum: number, r: any) => sum + (r.maintenanceCost || 0), 0),
+    driverCost: formattedRoutes.reduce((sum: number, r: any) => sum + (r.driverCost || 0), 0),
+    otherCosts: formattedRoutes.reduce((sum: number, r: any) => sum + (r.otherCosts || 0), 0),
+  }
 
   return {
     success: true,
     algorithm: "ortools",
     provider: "ortools-railway",
-    routes: railwayResult.routes || [],
-    summary: railwayResult.summary || {},
+    routes: formattedRoutes,
+    summary,
   }
 }
 
 export async function POST(req: NextRequest) {
-  console.log("[v0] ========== POST /api/optimize CALLED ==========")
-
   try {
     const body = await req.json()
-    console.log("[v0] Request body received")
-
-    const { depots, vehicles, customers, orders = [], algorithm = "ortools" } = body
+    const { depots, algorithm = "ortools" } = body
+    const { vehicles, customers, orders = [] } = body
 
     if (!depots || !vehicles || !customers) {
-      console.error("[v0] Missing required data")
       return NextResponse.json({ success: false, error: "Missing required data" }, { status: 400 })
     }
 
-    console.log("[v0] Starting optimization...")
+    const availableVehicles = vehicles.filter((v: any) => v.status === "available")
 
-    const result = await optimizeWithRailway(depots, vehicles, customers, orders, { fuelPricePerLiter: 47.5 })
+    const result = await optimizeWithRailway(depots, availableVehicles, customers, orders, {
+      fuelPricePerLiter: 47.5,
+    })
 
-    console.log("[v0] Returning optimization result")
     return NextResponse.json(result)
   } catch (error: any) {
     console.error("[v0] Optimization error:", error)
