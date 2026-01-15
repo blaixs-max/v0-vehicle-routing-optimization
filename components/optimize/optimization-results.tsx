@@ -42,13 +42,13 @@ export function OptimizationResults({ result, depots = [] }: OptimizationResults
 
   const summary = result.summary || {
     totalRoutes: result.routes?.length || 0,
-    totalDistance: 0,
-    totalDuration: 0,
-    totalCost: 0,
-    fuelCost: 0,
-    distanceCost: 0,
-    fixedCost: 0,
-    tollCost: 0,
+    totalDistance: result.routes?.reduce((sum, route) => sum + (route.totalDistance || 0), 0) || 0,
+    totalDuration: result.routes?.reduce((sum, route) => sum + (route.totalDuration || 0), 0) || 0,
+    totalCost: result.routes?.reduce((sum, route) => sum + (route.totalCost || 0), 0) || 0,
+    fuelCost: result.routes?.reduce((sum, route) => sum + (route.fuelCost || 0), 0) || 0,
+    distanceCost: result.routes?.reduce((sum, route) => sum + (route.distanceCost || 0), 0) || 0,
+    fixedCost: result.routes?.reduce((sum, route) => sum + (route.fixedCost || 0), 0) || 0,
+    tollCost: result.routes?.reduce((sum, route) => sum + (route.tollCost || 0), 0) || 0,
     unassignedCount: 0,
     computationTimeMs: 0,
   }
