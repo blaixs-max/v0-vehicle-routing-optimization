@@ -11,14 +11,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Job ID required" }, { status: 400 })
     }
 
-    // Mark job as processing
     await sql`
       UPDATE optimization_jobs
       SET status = 'processing', started_at = NOW()
       WHERE id = ${jobId}
     `
 
-    // Get job data
     const jobResult = await sql`
       SELECT request_data FROM optimization_jobs WHERE id = ${jobId}
     `
@@ -31,11 +29,55 @@ export async function POST(request: Request) {
     const startTime = Date.now()
 
     try {
-      // Call Railway optimizer
+      const railwayRequest = {
+        depots: requestData.depots.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          location: { lat: Number.parseFloat(d.lat), lng: Number.parseFloat(d.lng) },
+        })),
+        vehicles: requestData.vehicles.map((v: any) => ({
+          id: v.id,
+          type:
+            v.vehicle_type === "kamyonet"
+              ? 0
+              : v.vehicle_type === "kamyon_1" || v.vehicle_type === "kamyon_2"
+                ? 1
+                : v.vehicle_type === "tir"
+                  ? 2
+                  : 3,
+          capacity_pallets: v.capacity_pallets,
+          fuel_consumption: v.fuel_consumption_per_100km,
+          depot_id: v.assigned_depot_id,
+        })),
+        customers: requestData.customers.map((c: any) => {
+          const order = requestData.orders?.find((o: any) => o.customer_id === c.id)
+          return {
+            id: c.id,
+            name: c.name,
+            location: { lat: Number.parseFloat(c.lat), lng: Number.parseFloat(c.lng) },
+            demand_pallets: order?.pallets || 5,
+            business_type: "retail",
+            service_duration: c.service_duration_min || 15,
+            priority: order?.priority || 3,
+            time_constraints:
+              c.has_time_constraint && c.constraint_start_time && c.constraint_end_time
+                ? { start: c.constraint_start_time, end: c.constraint_end_time }
+                : null,
+            required_vehicle_type: c.required_vehicle_type || null,
+          }
+        }),
+        algorithm: requestData.algorithm || "ortools",
+        fuel_price_per_liter: requestData.fuelPricePerLiter || 47.5,
+        max_route_distance_km: requestData.maxRouteDistanceKm || 500,
+        max_route_time_min: requestData.maxRouteTimeMin || 600,
+      }
+
+      console.log("[v0] Sending to Railway:", JSON.stringify(railwayRequest).substring(0, 500))
+
       const optimizeResponse = await fetch(`${process.env.RAILWAY_API_URL}/optimize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestData),
+        body: JSON.stringify(railwayRequest),
       })
 
       if (!optimizeResponse.ok) {
@@ -46,7 +88,6 @@ export async function POST(request: Request) {
       const result = await optimizeResponse.json()
       const processingTime = Math.round((Date.now() - startTime) / 1000)
 
-      // Save result
       await sql`
         UPDATE optimization_jobs
         SET status = 'completed',
@@ -60,7 +101,6 @@ export async function POST(request: Request) {
     } catch (error: any) {
       const processingTime = Math.round((Date.now() - startTime) / 1000)
 
-      // Save error
       await sql`
         UPDATE optimization_jobs
         SET status = 'failed',
