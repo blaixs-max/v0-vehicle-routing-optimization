@@ -79,6 +79,8 @@ export function OptimizationPanel() {
   useEffect(() => {
     if (!jobId || jobStatus === "completed" || jobStatus === "failed") return
 
+    console.log("[v0] Polling started for jobId:", jobId, "status:", jobStatus)
+
     progressInterval = setInterval(async () => {
       try {
         const res = await fetch(`/api/optimize/jobs?jobId=${jobId}`)
