@@ -27,6 +27,7 @@ import {
   Building,
   Zap,
   Target,
+  Save,
 } from "lucide-react"
 import type { Depot, Vehicle, Customer, OptimizationResult } from "@/lib/types"
 import { OptimizationResults } from "./optimization-results"
@@ -45,6 +46,7 @@ export function OptimizationPanel() {
   const [progress, setProgress] = useState(0)
   const [isDemo, setIsDemo] = useState(false)
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
+  const [isSavingRoutes, setIsSavingRoutes] = useState(false)
 
   const [missingCoordinatesCustomers, setMissingCoordinatesCustomers] = useState<Customer[]>([])
   const [showMissingCoordinatesDialog, setShowMissingCoordinatesDialog] = useState(false)
@@ -358,6 +360,62 @@ export function OptimizationPanel() {
     }
   }
 
+  const handleSaveRoutes = async () => {
+    if (!result || result.routes.length === 0) {
+      toast({ description: "Kaydedilecek rota bulunamadı" })
+      return
+    }
+
+    setIsSavingRoutes(true)
+    try {
+      const response = await fetch("/api/routes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          routes: result.routes.map((route) => ({
+            id: `route-${Date.now()}-${route.vehicleId}`,
+            vehicleId: route.vehicleId,
+            depotId: route.depotId,
+            routeDate: new Date().toISOString().split("T")[0],
+            totalDistance: route.totalDistance,
+            totalDuration: route.totalDuration,
+            totalPallets: route.totalPallets,
+            totalCost: route.totalCost,
+            fuelCost: route.fuelCost,
+            distanceCost: route.distanceCost,
+            fixedCost: route.fixedCost,
+            stops: route.stops.map((stop) => ({
+              customerId: stop.customerId,
+              stopOrder: stop.stopOrder,
+              distanceFromPrev: stop.distanceFromPrev,
+              durationFromPrev: stop.durationFromPrev,
+              cumulativeDistance: stop.cumulativeDistance,
+              cumulativeLoad: stop.cumulativeLoad,
+              arrivalTime: stop.arrivalTime,
+            })),
+          })),
+        }),
+      })
+
+      if (!response.ok) throw new Error("Failed to save routes")
+
+      const resultData = await response.json()
+      toast({
+        title: "Rotalar Kaydedildi",
+        description: `${resultData.count} rota başarıyla kaydedildi`,
+      })
+    } catch (error) {
+      console.error("[v0] Save routes error:", error)
+      toast({
+        title: "Hata",
+        description: "Rotalar kaydedilemedi",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingRoutes(false)
+    }
+  }
+
   const activeDepots = depots.filter((d) => selectedDepots.includes(d.id))
   const availableVehicles = vehicles.filter((v) => selectedDepots.includes(v.depot_id || ""))
   const totalCapacity = availableVehicles.reduce((sum, v) => sum + (v.capacity_pallets || 0), 0)
@@ -631,7 +689,21 @@ export function OptimizationPanel() {
               <AlertDescription className="text-red-600 dark:text-red-400">{optimizeError}</AlertDescription>
             </Alert>
           ) : result ? (
-            <OptimizationResults result={result} depots={depots} />
+            <>
+              <OptimizationResults result={result} depots={depots} />
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Optimizasyon Sonuçları</span>
+                    <Button onClick={handleSaveRoutes} disabled={isSavingRoutes} size="sm">
+                      <Save className="h-4 w-4 mr-2" />
+                      {isSavingRoutes ? "Kaydediliyor..." : "Rotaları Kaydet"}
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                {/* ... existing result display ... */}
+              </Card>
+            </>
           ) : (
             <Card className="h-full flex items-center justify-center min-h-[400px]">
               <div className="text-center p-8">

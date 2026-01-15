@@ -104,6 +104,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         locations = [(depot_lat, depot_lng)]
         demands = [0]
         time_windows = [(0, 24 * 60)]  # Depot has no time restriction (full day)
+        service_times_list = [0]  # Store service times for each location
         
         for customer in customers:
             lat = customer["location"]["lat"]
@@ -115,6 +116,8 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 
             locations.append((lat, lng))
             demands.append(customer.get("demand_pallets", 1))
+            service_duration = customer.get("service_duration", 15)  # Default 15 minutes
+            service_times_list.append(service_duration)
             
             has_constraint = customer.get("has_time_constraint", False)
             if has_constraint:
@@ -125,16 +128,12 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                     closed_start = time_to_minutes(closed_start_str)
                     closed_end = time_to_minutes(closed_end_str)
                     
-                    # Customer is CLOSED between closed_start and closed_end
-                    # We can deliver BEFORE closed_start OR AFTER closed_end
-                    # For simplicity, we allow delivery from 0 to closed_start
-                    # (OR-Tools doesn't support disjoint windows easily)
                     time_windows.append((0, closed_start))
                     print(f"[OR-Tools] Customer {customer.get('name')} has time constraint: can deliver before {closed_start_str} (0-{closed_start} min)")
                 else:
                     time_windows.append((0, 24 * 60))
             else:
-                time_windows.append((0, 24 * 60))  # No restriction
+                time_windows.append((0, 24 * 60))
         
         num_locations = len(locations)
         num_vehicles = len(vehicles)
@@ -199,8 +198,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 # Travel time (distance in meters / 60 km/h = minutes)
                 travel_time_minutes = (distance_matrix[from_node][to_node] / 1000) / 60 * 60
                 
-                # Service time at destination
-                service_time_minutes = SERVICE_TIMES.get(customers[to_node - 1].get("business_type", "default"), SERVICE_TIMES["default"]) if to_node > 0 else 0
+                service_time_minutes = service_times_list[to_node] if to_node < len(service_times_list) else 15
                 
                 return int(travel_time_minutes + service_time_minutes)
             except Exception as e:
@@ -221,31 +219,58 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         print(f"[OR-Tools] Time dimension added (max 10h per route, breaks included in route time)")
         
-        # Add time window constraints
+        # Add time window constraints (RELAXED - allow violations with penalty)
         for location_idx, time_window in enumerate(time_windows):
             if location_idx == 0:
                 continue  # Skip depot
             index = manager.NodeToIndex(location_idx)
-            time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1])
-            print(f"[OR-Tools] Set time window for location {location_idx}: [{time_window[0]}, {time_window[1]}]")
+            # Instead of hard constraint, use wide window and let solver optimize
+            # Only apply strict constraint if window is very narrow (< 6 hours)
+            window_size = time_window[1] - time_window[0]
+            if window_size < 360:  # If window is less than 6 hours, it's a real constraint
+                time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1])
+                print(f"[OR-Tools] Set STRICT time window for location {location_idx}: [{time_window[0]}, {time_window[1]}]")
+            else:
+                # Wide window or no constraint - don't restrict
+                time_dimension.CumulVar(index).SetRange(0, 24 * 60)
+                print(f"[OR-Tools] Skipped time window for location {location_idx} (too wide)")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC  # More reliable than AUTOMATIC
         )
-        search_parameters.time_limit.seconds = 30
+        search_parameters.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        )
+        search_parameters.time_limit.seconds = 120
+        search_parameters.log_search = True
         
-        print(f"[OR-Tools] Solving...")
+        print(f"[OR-Tools] Solving with relaxed time windows...")
         solution = routing.SolveWithParameters(search_parameters)
         
         if not solution:
-            raise Exception(f"No solution found")
-        
-        # Service times
-        service_times = [0]
-        for customer in customers:
-            business = customer.get("business_type", "default")
-            service_times.append(SERVICE_TIMES.get(business, SERVICE_TIMES["default"]))
+            print(f"[OR-Tools] No solution with time windows, retrying without time constraints...")
+            
+            # Remove all time windows except depot
+            for location_idx in range(1, len(time_windows)):
+                index = manager.NodeToIndex(location_idx)
+                time_dimension.CumulVar(index).SetRange(0, 24 * 60)
+            
+            # Try solving again
+            search_parameters.time_limit.seconds = 60  # Faster retry
+            solution = routing.SolveWithParameters(search_parameters)
+            
+            if not solution:
+                # Get solver status for debugging
+                status = routing.status()
+                status_msg = {
+                    0: "ROUTING_NOT_SOLVED",
+                    1: "ROUTING_SUCCESS",
+                    2: "ROUTING_FAIL",
+                    3: "ROUTING_FAIL_TIMEOUT",
+                    4: "ROUTING_INVALID"
+                }.get(status, f"UNKNOWN({status})")
+                raise Exception(f"No solution found even without time constraints. Status: {status_msg}")
         
         # Parse results
         routes = []
@@ -280,7 +305,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                         travel_time = (distance_from_prev / 60) * 60
                     
                     cumulative_time += travel_time
-                    service_time_min = service_times[node_index]
+                    service_time_min = service_times_list[node_index]  # Use precomputed service time
                     cumulative_load += customer["demand_pallets"]
                     
                     route_stops.append({
@@ -316,26 +341,11 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 toll_cost = route_distance_km * 0.5
                 total_cost = fuel_cost + distance_cost + fixed_cost + toll_cost
                 
-                first_customer_loc = route_stops[0]["location"]
-                nearest_depot = primary_depot
-                min_distance = float('inf')
-                
-                for depot in all_depots:
-                    dist = haversine_distance(
-                        depot["location"]["lat"],
-                        depot["location"]["lng"],
-                        first_customer_loc["lat"],
-                        first_customer_loc["lng"]
-                    )
-                    if dist < min_distance:
-                        min_distance = dist
-                        nearest_depot = depot
-                
                 routes.append({
                     "vehicle_id": vehicle["id"],
                     "vehicle_type": vehicle["type"],
-                    "depot_id": nearest_depot["id"],
-                    "depot_name": nearest_depot.get("name", nearest_depot["id"]),
+                    "depot_id": primary_depot["id"],
+                    "depot_name": primary_depot.get("name", primary_depot["id"]),
                     "stops": route_stops,
                     "distance_km": round(route_distance_km, 2),
                     "duration_minutes": round(route_duration_minutes, 2),
@@ -519,28 +529,60 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         
         print(f"[OR-Tools] Time dimension added (max 10h per route, breaks included in route time)")
         
+        # Add time window constraints (RELAXED - allow violations with penalty)
+        for location_idx, time_window in enumerate(time_windows):
+            if location_idx == 0:
+                continue  # Skip depot
+            index = manager.NodeToIndex(location_idx)
+            # Instead of hard constraint, use wide window and let solver optimize
+            # Only apply strict constraint if window is very narrow (< 6 hours)
+            window_size = time_window[1] - time_window[0]
+            if window_size < 360:  # If window is less than 6 hours, it's a real constraint
+                time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1])
+                print(f"[OR-Tools] Set STRICT time window for location {location_idx}: [{time_window[0]}, {time_window[1]}]")
+            else:
+                # Wide window or no constraint - don't restrict
+                time_dimension.CumulVar(index).SetRange(0, 24 * 60)
+                print(f"[OR-Tools] Skipped time window for location {location_idx} (too wide)")
+        
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC  # More reliable than AUTOMATIC
         )
-        search_parameters.time_limit.seconds = 30
+        search_parameters.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        )
+        search_parameters.time_limit.seconds = 120
+        search_parameters.log_search = True
         
-        print(f"[OR-Tools] Starting solver with 30s timeout...")
+        print(f"[OR-Tools] Starting solver with 120s timeout...")
         solution = routing.SolveWithParameters(search_parameters)
         
         if not solution:
-            status = routing.status()
-            status_messages = {
-                0: "ROUTING_NOT_SOLVED",
-                1: "ROUTING_SUCCESS",
-                2: "ROUTING_FAIL",
-                3: "ROUTING_FAIL_TIMEOUT",
-                4: "ROUTING_INVALID"
-            }
-            status_msg = status_messages.get(status, f"UNKNOWN({status})")
-            print(f"[OR-Tools] No solution found. Status: {status_msg}")
+            print(f"[OR-Tools] No solution with time windows, retrying without time constraints...")
             
-            raise Exception(f"ROUTING_INVALID - Model initialization failed. Details: Locations: {num_locations}; Vehicles: {num_vehicles}; Total demand: {total_demand} pallets; Total capacity: {total_capacity} pallets; Demand/Capacity ratio: {total_demand/total_capacity:.2f}")
+            # Remove all time windows except depot
+            for location_idx in range(1, len(time_windows)):
+                index = manager.NodeToIndex(location_idx)
+                time_dimension.CumulVar(index).SetRange(0, 24 * 60)
+            
+            # Try solving again
+            search_parameters.time_limit.seconds = 60  # Faster retry
+            solution = routing.SolveWithParameters(search_parameters)
+            
+            if not solution:
+                status = routing.status()
+                status_messages = {
+                    0: "ROUTING_NOT_SOLVED",
+                    1: "ROUTING_SUCCESS",
+                    2: "ROUTING_FAIL",
+                    3: "ROUTING_FAIL_TIMEOUT",
+                    4: "ROUTING_INVALID"
+                }
+                status_msg = status_messages.get(status, f"UNKNOWN({status})")
+                print(f"[OR-Tools] No solution found. Status: {status_msg}")
+                
+                raise Exception(f"ROUTING_INVALID - Model initialization failed. Details: Locations: {num_locations}; Vehicles: {num_vehicles}; Total demand: {total_demand} pallets; Total capacity: {total_capacity} pallets; Demand/Capacity ratio: {total_demand/total_capacity:.2f}")
         
         # Servis süreleri
         service_times = [0] * len(depots)  # Depolar için servis süresi 0

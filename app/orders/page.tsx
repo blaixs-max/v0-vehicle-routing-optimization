@@ -65,20 +65,21 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [cityFilter, setCityFilter] = useState<string>("all")
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        console.log("[v0] Fetching orders from /api/orders...")
-        const response = await fetch("/api/orders")
-        const data = await response.json()
-        console.log("[v0] Orders received from API:", data.length)
-        setOrders(data)
-      } catch (error) {
-        console.error("[v0] Error fetching orders:", error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchOrders = async () => {
+    try {
+      console.log("[v0] Fetching orders from /api/orders...")
+      const response = await fetch("/api/orders")
+      const data = await response.json()
+      console.log("[v0] Orders received from API:", data.length)
+      setOrders(data)
+    } catch (error) {
+      console.error("[v0] Error fetching orders:", error)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchOrders()
   }, [])
 
@@ -230,7 +231,7 @@ export default function OrdersPage() {
                     <TableHead>Müşteri</TableHead>
                     <TableHead>Şehir</TableHead>
                     <TableHead>Talep</TableHead>
-                    <TableHead>Öncelik</TableHead> {/* Add priority column */}
+                    <TableHead>Öncelik</TableHead>
                     <TableHead>Durum</TableHead>
                     <TableHead>Teslimat Tarihi</TableHead>
                     <TableHead className="w-12"></TableHead>
@@ -244,15 +245,48 @@ export default function OrdersPage() {
                         <TableCell className="font-mono text-sm">{order.id}</TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium text-slate-900">{order.customer_name}</p>
+                            <p className="font-medium text-slate-900">{order.customer_name || "N/A"}</p>
                             <p className="text-sm text-slate-500 truncate max-w-[200px]">{order.customer_address}</p>
                           </div>
                         </TableCell>
-                        <TableCell>{order.customer_city}</TableCell>
+                        <TableCell>{order.customer_city || "N/A"}</TableCell>
                         <TableCell>
                           <div className="text-sm">
                             <p>{order.pallets} palet</p>
+                            <span className="text-xs text-muted-foreground">
+                              {(order.pallets * 500).toLocaleString()} kg
+                            </span>
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={String(order.priority || 3)}
+                            onValueChange={async (value) => {
+                              try {
+                                const response = await fetch(`/api/orders/${order.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ priority: Number.parseInt(value) }),
+                                })
+                                if (response.ok) {
+                                  fetchOrders()
+                                }
+                              } catch (error) {
+                                console.error("Priority update failed:", error)
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">1 - Çok Acil</SelectItem>
+                              <SelectItem value="2">2 - Acil</SelectItem>
+                              <SelectItem value="3">3 - Normal</SelectItem>
+                              <SelectItem value="4">4 - Düşük</SelectItem>
+                              <SelectItem value="5">5 - Ertelenebilir</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell>
                           <Badge className={priorityConfig[(order.priority || 3) as keyof typeof priorityConfig].color}>

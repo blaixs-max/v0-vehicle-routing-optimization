@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { TURKEY_CITIES, VEHICLE_TYPES } from "@/lib/constants"
+import { TURKEY_CITIES } from "@/lib/constants"
 
 interface CustomerFormDialogProps {
   open: boolean
@@ -241,51 +241,48 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
               type="number"
               min="5"
               max="120"
-              value={form.service_duration_min || 15}
-              onChange={(e) => setForm({ ...form, service_duration_min: Number.parseInt(e.target.value) })}
+              value={form.service_duration_min}
+              onChange={(e) => setForm({ ...form, service_duration_min: e.target.value })}
               placeholder="15"
             />
-            <p className="text-xs text-muted-foreground">
-              Müşteride yük boşaltma için gereken süre (varsayılan: 15 dk)
-            </p>
+            <p className="text-xs text-muted-foreground">Müşteride mal boşaltmak için gereken süre</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Gerekli Araç Tipi</Label>
-              <Select
-                value={form.required_vehicle_type}
-                onValueChange={(v) => setForm({ ...form, required_vehicle_type: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Herhangi bir araç (kısıt yok)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Herhangi bir araç (kısıt yok)</SelectItem>
-                  {Object.entries(VEHICLE_TYPES).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      {config.label} - {config.capacity}p / {config.fuelConsumption}L
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">Bu müşteriye sadece belirtilen araç tipi gönderilir</p>
-            </div>
-            <div className="space-y-2">
-              <Label>Atanmış Depo</Label>
-              <Select value={form.assigned_depot_id} onValueChange={(v) => setForm({ ...form, assigned_depot_id: v })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Depo seçin" />
-                </SelectTrigger>
-                <SelectContent>
-                  {depots.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="required_vehicle_type">Gerekli Araç Tipi (Opsiyonel)</Label>
+            <Select
+              value={form.required_vehicle_type || "none"}
+              onValueChange={(value) => setForm({ ...form, required_vehicle_type: value === "none" ? null : value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Araç tipi seçin (yoksa boş bırakın)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Kısıt Yok (Tüm araçlar)</SelectItem>
+                <SelectItem value="kamyonet">Kamyonet (10 palet)</SelectItem>
+                <SelectItem value="kamyon_1">Kamyon 1 (14 palet)</SelectItem>
+                <SelectItem value="kamyon_2">Kamyon 2 (18 palet)</SelectItem>
+                <SelectItem value="tir">TIR (32 palet)</SelectItem>
+                <SelectItem value="romork">Romork (36 palet)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Bu müşteriye sadece seçilen araç tipi gidebilir</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="assigned_depot">Atanmış Depo</Label>
+            <Select value={form.assigned_depot_id} onValueChange={(v) => setForm({ ...form, assigned_depot_id: v })}>
+              <SelectTrigger>
+                <SelectValue placeholder="Depo seçin" />
+              </SelectTrigger>
+              <SelectContent>
+                {depots.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <DialogFooter>
