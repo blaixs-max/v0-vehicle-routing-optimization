@@ -53,6 +53,8 @@ export function OptimizationPanel() {
     { customerId: string; customerName: string; pallets: number; priority?: number }[]
   >([])
 
+  const [selectedCustomers, setSelectedCustomers] = useState<string[]>([])
+
   // Parameters
   const [selectedDepots, setSelectedDepots] = useState<string[]>([])
   const [fuelPrice, setFuelPrice] = useState(47.5)
@@ -60,10 +62,6 @@ export function OptimizationPanel() {
   const [maxRouteDuration, setMaxRouteDuration] = useState(600)
   const [useRealDistances, setUseRealDistances] = useState(true)
   const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ortools")
-
-  const [jobId, setJobId] = useState<string | null>(null)
-  const [jobStatus, setJobStatus] = useState<string | null>(null)
-  let progressInterval: any
 
   const availableVehicles = vehicles.filter((v) => selectedDepots.includes(v.depot_id || ""))
   const totalCapacity = availableVehicles.reduce((sum, v) => sum + (v.capacity_pallets || 0), 0)
@@ -75,81 +73,6 @@ export function OptimizationPanel() {
   useEffect(() => {
     fetchData()
   }, [])
-
-  useEffect(() => {
-    if (!jobId || jobStatus === "completed" || jobStatus === "failed") {
-      return
-    }
-
-    const checkStatus = async () => {
-      try {
-        const response = await fetch(`/api/optimize/jobs/${jobId}`)
-        const data = await response.json()
-
-        if (data.status === "completed" && data.result) {
-          const mappedResult = {
-            routes: data.result.routes.map((route: any) => ({
-              vehicleId: route.vehicle_id,
-              depotId: route.depot_id,
-              totalDistance: route.total_distance_km,
-              totalDuration: route.total_duration_min,
-              totalPallets: route.total_pallets,
-              totalCost: route.total_cost,
-              fuelCost: route.fuel_cost,
-              distanceCost: route.distance_cost,
-              fixedCost: route.fixed_cost,
-              stops: route.stops.map((stop: any) => ({
-                customerId: stop.customer_id,
-                customerName: stop.customer_name,
-                stopOrder: stop.stop_order,
-                distanceFromPrev: stop.distance_from_prev_km,
-                durationFromPrev: stop.duration_from_prev_min,
-                cumulativeDistance: stop.cumulative_distance_km,
-                cumulativeLoad: stop.cumulative_load_pallets,
-                arrivalTime: stop.arrival_time,
-              })),
-            })),
-            summary: data.result.summary
-              ? {
-                  totalRoutes: data.result.summary.total_routes,
-                  totalDistance: data.result.summary.total_distance_km,
-                  totalDuration: data.result.summary.total_duration_min,
-                  totalCost: data.result.summary.total_cost,
-                  totalPallets: data.result.summary.total_pallets,
-                }
-              : undefined,
-          }
-
-          setResult(mappedResult)
-          setOptimizing(false)
-          setProgress(100)
-          toast({
-            title: "Optimizasyon Tamamlandı",
-            description: `${mappedResult.routes.length} rota oluşturuldu.`,
-          })
-        } else if (data.status === "failed") {
-          setOptimizing(false)
-          setOptimizeError(data.error || "Optimizasyon başarısız")
-          toast({
-            title: "Optimizasyon Hatası",
-            description: data.error || "Bilinmeyen hata",
-            variant: "destructive",
-          })
-        } else if (data.status === "processing") {
-          setProgress(50)
-        }
-
-        setJobStatus(data.status)
-      } catch (error) {
-        console.error("Polling error:", error)
-      }
-    }
-
-    const interval = setInterval(checkStatus, 3000)
-    checkStatus()
-
-    return () => clearInterval(interval)
-  }, [jobId, jobStatus])
 
   async function fetchData() {
     try {
@@ -223,24 +146,16 @@ export function OptimizationPanel() {
 
   async function handleOptimize() {
     if (selectedDepots.length === 0) {
-      toast({
-        title: "Hata",
-        description: "Lütfen en az bir depo seçin",
-        variant: "destructive",
-      })
+      toast({ description: "En az bir depo seçmelisiniz" })
       return
     }
 
-    if (orders.length === 0) {
-      toast({
-        title: "Hata",
-        description: "Bekleyen sipariş bulunamadı. Lütfen Siparişler sayfasından sipariş ekleyin.",
-        variant: "destructive",
-      })
+    const customersToOptimize = selectedCustomers.length > 0 ? selectedCustomers : customers.map((c) => c.id)
+
+    if (customersToOptimize.length === 0) {
+      toast({ description: "Optimize edilecek müşteri bulunamadı" })
       return
     }
-
-    const customersToOptimize = orders.map((o) => o.customerId)
 
     const missingCoords = customers
       .filter((c) => customersToOptimize.includes(c.id))
@@ -260,20 +175,14 @@ export function OptimizationPanel() {
     setOptimizing(true)
     setOptimizeError(null)
     setProgress(10)
-    setResult(null) // Clear previous result
+    setResult(null)
 
     const depotsData = selectedDepots.map((id) => depots.find((d) => d.id === id)).filter(Boolean)
     const vehiclesData = vehicles.filter((v) => v.status === "available")
     const customersData = customersToOptimize.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
 
-    console.log("[v0] About to create job with:", {
-      depotsCount: depotsData.length,
-      vehiclesCount: vehiclesData.length,
-      customersCount: customersData.length,
-    })
-
     try {
-      const jobRes = await fetch("/api/optimize/jobs", {
+      const response = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -288,33 +197,21 @@ export function OptimizationPanel() {
         }),
       })
 
-      if (!jobRes.ok) {
-        const errorData = await jobRes.json().catch(() => ({}))
-        throw new Error(errorData.error || "Job oluşturulamadı")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || "Optimization failed")
       }
 
-      const jobData = await jobRes.json()
+      const result = await response.json()
 
-      setJobId(jobData.jobId)
-      setJobStatus("pending")
-      setProgress(20)
-
-      fetch("/api/optimize/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId: jobData.jobId }),
-      }).catch((err) => console.error("[v0] Failed to start processing:", err))
+      setResult(result)
+      setOptimizing(false)
 
       toast({
-        title: "Optimizasyon Başlatıldı",
-        description: "Sonuçları beklerken sayfada kalabilirsiniz.",
+        title: "Optimizasyon Tamamlandı",
+        description: `${result.routes?.length || 0} rota oluşturuldu`,
       })
     } catch (error: any) {
-      console.error("[v0] Full error object:", error)
-      console.error("[v0] Error name:", error?.name)
-      console.error("[v0] Error message:", error?.message)
-      console.error("[v0] Error stack:", error?.stack)
-
       setOptimizing(false)
       setOptimizeError(error instanceof Error ? error.message : "Bilinmeyen hata")
       toast({
