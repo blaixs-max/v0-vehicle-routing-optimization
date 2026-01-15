@@ -535,13 +535,12 @@ async function optimizeWithRailway(
       const vehicle = vehicleMap.get(route.vehicle_id)
       const depot = findNearestDepot(route.stops[0], depots)
 
-      // Calculate estimated duration from distance (60 km/h average)
       const estimatedDurationMinutes = Math.round((route.total_distance_km / 60) * 60)
 
       return {
         vehicleId: route.vehicle_id || vehicle?.id || `vehicle-${index}`,
-        vehiclePlate: vehicle?.license_plate || `Araç ${index + 1}`,
-        vehicleType: vehicle?.type || "Kamyon",
+        vehiclePlate: vehicle?.plate || vehicle?.license_plate || `Araç ${index + 1}`,
+        vehicleType: vehicle?.vehicle_type || "Kamyon",
         depotId: depot?.id,
         depotName: depot?.name || depot?.city,
         totalDistance: route.total_distance_km || 0,
@@ -587,10 +586,10 @@ async function optimizeWithRailway(
         totalDistance: Math.round((railwayResult.total_distance_km || 0) * 10) / 10,
         totalDuration: totalDuration,
         totalCost: Math.round((railwayResult.total_cost || 0) * 100) / 100,
-        fuelCost: Math.round((railwayResult.total_fuel_cost || 0) * 100) / 100,
-        fixedCost: Math.round((railwayResult.total_fixed_cost || 0) * 100) / 100,
-        distanceCost: Math.round((railwayResult.total_distance_cost || 0) * 100) / 100,
-        tollCost: Math.round((railwayResult.total_toll_cost || 0) * 100) / 100,
+        fuelCost: Math.round((railwayResult.total_fuel_cost || railwayResult.fuel_cost || 0) * 100) / 100,
+        fixedCost: Math.round((railwayResult.total_fixed_cost || railwayResult.fixed_cost || 0) * 100) / 100,
+        distanceCost: Math.round((railwayResult.total_distance_cost || railwayResult.distance_cost || 0) * 100) / 100,
+        tollCost: Math.round((railwayResult.total_toll_cost || railwayResult.toll_cost || 0) * 100) / 100,
         unassignedCount: 0,
         computationTimeMs: Date.now() - options.algorithm ? 0 : Date.now(), // Add computation time
       },
