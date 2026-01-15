@@ -310,7 +310,11 @@ export function OptimizationPanel() {
         description: "Sonuçları beklerken sayfada kalabilirsiniz.",
       })
     } catch (error: any) {
-      console.error("[v0] Optimization error:", error)
+      console.error("[v0] Full error object:", error)
+      console.error("[v0] Error name:", error?.name)
+      console.error("[v0] Error message:", error?.message)
+      console.error("[v0] Error stack:", error?.stack)
+
       setOptimizing(false)
       setOptimizeError(error instanceof Error ? error.message : "Bilinmeyen hata")
       toast({
