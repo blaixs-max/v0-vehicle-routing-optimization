@@ -457,6 +457,7 @@ async function optimizeWithRailway(
         capacity_pallets: v.capacity_pallet || v.capacity_pallets || 12,
         fuel_consumption: v.fuel_consumption || 25,
         vehicle_type_name: v.vehicle_type, // Send type name for matching
+        plate: v.plate || v.license_plate || `${v.id}`, // Send plate to Railway
       }
     }),
     fuel_price: options.fuelPricePerLiter || 47.5,
