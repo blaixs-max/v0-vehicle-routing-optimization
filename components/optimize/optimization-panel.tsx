@@ -97,46 +97,52 @@ export function OptimizationPanel() {
           console.log("[v0] Result summary:", data.result?.summary)
           console.log("[v0] First route sample:", data.result?.routes?.[0])
 
-          const mappedResult = {
-            routes: (data.result?.routes || []).map((route: any) => ({
-              vehicleId: route.vehicle_id,
-              depotId: route.depot_id,
-              totalDistance: route.total_distance_km,
-              totalDuration: route.total_duration_min,
-              totalPallets: route.total_pallets,
-              totalCost: route.total_cost,
-              fuelCost: route.fuel_cost,
-              distanceCost: route.distance_cost,
-              fixedCost: route.fixed_cost,
-              stops: (route.stops || []).map((stop: any) => ({
-                customerId: stop.customer_id,
-                customerName: stop.customer_name,
-                stopOrder: stop.stop_order,
-                distanceFromPrev: stop.distance_from_prev_km,
-                durationFromPrev: stop.duration_from_prev_min,
-                cumulativeDistance: stop.cumulative_distance_km,
-                cumulativeLoad: stop.cumulative_load_pallets,
-                arrivalTime: stop.arrival_time,
+          if (data.result && data.result.routes) {
+            const mappedResult = {
+              routes: data.result.routes.map((route: any) => ({
+                vehicleId: route.vehicle_id || route.vehicleId,
+                depotId: route.depot_id || route.depotId,
+                totalDistance: route.total_distance_km || route.totalDistance || 0,
+                totalDuration: route.total_duration_min || route.totalDuration || 0,
+                totalPallets: route.total_pallets || route.totalPallets || 0,
+                totalCost: route.total_cost || route.totalCost || 0,
+                fuelCost: route.fuel_cost || route.fuelCost || 0,
+                distanceCost: route.distance_cost || route.distanceCost || 0,
+                fixedCost: route.fixed_cost || route.fixedCost || 0,
+                stops: (route.stops || []).map((stop: any) => ({
+                  customerId: stop.customer_id || stop.customerId,
+                  customerName: stop.customer_name || stop.customerName,
+                  stopOrder: stop.stop_order || stop.stopOrder,
+                  distanceFromPrev: stop.distance_from_prev_km || stop.distanceFromPrev || 0,
+                  durationFromPrev: stop.duration_from_prev_min || stop.durationFromPrev || 0,
+                  cumulativeDistance: stop.cumulative_distance_km || stop.cumulativeDistance || 0,
+                  cumulativeLoad: stop.cumulative_load_pallets || stop.cumulativeLoad || 0,
+                  arrivalTime: stop.arrival_time || stop.arrivalTime,
+                })),
               })),
-            })),
-            summary: data.result?.summary
-              ? {
-                  totalRoutes: data.result.summary.total_routes,
-                  totalDistance: data.result.summary.total_distance_km,
-                  totalDuration: data.result.summary.total_duration_min,
-                  totalCost: data.result.summary.total_cost,
-                  totalPallets: data.result.summary.total_pallets,
-                }
-              : undefined,
-          }
+              summary: data.result.summary
+                ? {
+                    totalRoutes: data.result.summary.total_routes || data.result.summary.totalRoutes || 0,
+                    totalDistance: data.result.summary.total_distance_km || data.result.summary.totalDistance || 0,
+                    totalDuration: data.result.summary.total_duration_min || data.result.summary.totalDuration || 0,
+                    totalCost: data.result.summary.total_cost || data.result.summary.totalCost || 0,
+                    totalPallets: data.result.summary.total_pallets || data.result.summary.totalPallets || 0,
+                  }
+                : undefined,
+            }
 
-          setResult(mappedResult)
-          setOptimizing(false)
-          setProgress(100)
-          toast({
-            title: "Optimizasyon Tamamlandı",
-            description: `${mappedResult.routes.length} rota oluşturuldu.`,
-          })
+            setResult(mappedResult)
+            setOptimizing(false)
+            setProgress(100)
+            toast({
+              title: "Optimizasyon Tamamlandı",
+              description: `${mappedResult.routes.length} rota oluşturuldu.`,
+            })
+          } else {
+            console.error("[v0] Invalid result format:", data.result)
+            setOptimizing(false)
+            setOptimizeError("Geçersiz sonuç formatı")
+          }
         } else if (data.status === "failed") {
           setOptimizing(false)
           setOptimizeError(data.error || "Optimizasyon başarısız")
