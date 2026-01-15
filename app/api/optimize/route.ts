@@ -559,24 +559,24 @@ async function optimizeWithRailway(
       geometry: route.geometry || [], // Include geometry if available
     }))
 
-    const totalDuration = formattedRoutes.reduce((sum: number, route: any) => sum + (route.totalDuration || 0), 0)
+    const summary = {
+      totalRoutes: formattedRoutes.length,
+      totalDistance: formattedRoutes.reduce((sum, route) => sum + (route.totalDistance || 0), 0),
+      totalDuration: formattedRoutes.reduce((sum, route) => sum + (route.totalDuration || 0), 0),
+      totalCost: formattedRoutes.reduce((sum, route) => sum + (route.totalCost || 0), 0),
+      fuelCost: formattedRoutes.reduce((sum, route) => sum + (route.fuelCost || 0), 0),
+      fixedCost: formattedRoutes.reduce((sum, route) => sum + (route.fixedCost || 0), 0),
+      distanceCost: formattedRoutes.reduce((sum, route) => sum + (route.distanceCost || 0), 0),
+      tollCost: formattedRoutes.reduce((sum, route) => sum + (route.tollCost || 0), 0),
+      unassignedCount: 0,
+      computationTimeMs: 0,
+    }
 
     return {
       success: true,
       algorithm: "ortools",
       provider: "ortools-railway",
-      summary: {
-        totalRoutes: formattedRoutes.length,
-        totalDistance: railwayResult.total_distance_km || railwayResult.summary?.total_distance_km || 0,
-        totalDuration: totalDuration,
-        totalCost: railwayResult.total_cost || railwayResult.summary?.total_cost || 0,
-        fuelCost: railwayResult.total_fuel_cost || railwayResult.summary?.fuel_cost || 0,
-        fixedCost: railwayResult.total_fixed_cost || railwayResult.summary?.fixed_cost || 0,
-        distanceCost: railwayResult.total_distance_cost || railwayResult.summary?.distance_cost || 0,
-        tollCost: railwayResult.total_toll_cost || railwayResult.summary?.toll_cost || 0,
-        unassignedCount: 0,
-        computationTimeMs: 0,
-      },
+      summary,
       routes: formattedRoutes,
       unassigned: [],
     }
