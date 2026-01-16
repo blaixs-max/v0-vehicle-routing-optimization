@@ -539,6 +539,15 @@ def _optimize_multi_depot(
             depot_name = next((d.get("name", depot_id) for d in depots if d["id"] == depot_id), depot_id)
             print(f"[OR-Tools]   {depot_name}: {len(depot_vehicles[depot_id])} vehicles (capacity: {allocated_capacity}, demand: {depot_demand})")
 
+            # If still insufficient, keep adding vehicles until demand is met
+            while allocated_capacity < depot_demand and len(vehicles_copy) > 0:
+                # Find largest remaining vehicle
+                largest_vehicle = max(vehicles_copy, key=lambda v: v.get("capacity_pallets", 26))
+                depot_vehicles[depot_id].append(largest_vehicle)
+                allocated_capacity += largest_vehicle.get("capacity_pallets", 26)
+                vehicles_copy.remove(largest_vehicle)
+                print(f"[OR-Tools]   {depot_name}: Added vehicle to meet demand (new capacity: {allocated_capacity})")
+
         # Distribute remaining vehicles to depots with customers
         if vehicles_copy:
             print(f"[OR-Tools] Distributing {len(vehicles_copy)} remaining vehicles...")
