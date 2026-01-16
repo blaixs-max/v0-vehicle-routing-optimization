@@ -68,7 +68,7 @@ export default function OrdersPage() {
   const fetchOrders = async () => {
     try {
       console.log("[v0] Fetching orders from /api/orders...")
-      const response = await fetch("/api/orders")
+      const response = await fetch("/api/orders?all=true")
       const data = await response.json()
       console.log("[v0] Orders received from API:", data.length)
       setOrders(data)

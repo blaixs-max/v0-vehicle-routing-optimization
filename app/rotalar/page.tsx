@@ -18,7 +18,7 @@ export default function RotalarPage() {
 
   const fetchRoutes = async () => {
     try {
-      const response = await fetch("/api/routes")
+      const response = await fetch("/api/routes?all=true")
       if (!response.ok) throw new Error("Failed to fetch routes")
       const data = await response.json()
       setRoutes(data)

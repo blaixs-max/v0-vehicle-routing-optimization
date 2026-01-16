@@ -41,7 +41,7 @@ export function CustomersTable() {
 
   async function fetchData() {
     try {
-      const [customersRes, depotsRes] = await Promise.all([fetch("/api/customers"), fetch("/api/depots")])
+      const [customersRes, depotsRes] = await Promise.all([fetch("/api/customers?all=true"), fetch("/api/depots")])
 
       const [customersData, depotsData] = await Promise.all([customersRes.json(), depotsRes.json()])
 
