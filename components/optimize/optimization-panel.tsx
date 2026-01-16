@@ -230,6 +230,8 @@ export function OptimizationPanel() {
       orders: orders.length,
       algorithm,
     })
+    console.log("[v0] Orders detail:", orders.slice(0, 5)) // First 5 orders
+    console.log("[v0] Total pallets in orders:", orders.reduce((sum, o) => sum + (o.pallets || 0), 0))
 
     try {
       console.log("[v0] Fetching /api/optimize...")
