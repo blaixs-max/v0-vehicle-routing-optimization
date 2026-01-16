@@ -11,6 +11,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # v2 optimizer (optimized version)
 from ortools_optimizer_v2 import optimize_routes, OptimizerConfig
 
+# Async job queue
+from job_queue import get_job_queue, JobStatus
+
 app = FastAPI(
     title="VRP Optimizer API",
     description="Optimized Vehicle Routing Problem solver using OR-Tools",
@@ -143,6 +146,99 @@ def optimize(request: OptimizeRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# ASYNC JOB QUEUE ENDPOINTS
+# ============================================
+
+class AsyncOptimizeResponse(BaseModel):
+    """Response for async optimization request"""
+    job_id: str
+    status: str
+    message: str
+
+
+class JobStatusResponse(BaseModel):
+    """Job status response"""
+    id: str
+    status: str
+    progress: int
+    created_at: float
+    started_at: Optional[float]
+    completed_at: Optional[float]
+    elapsed_seconds: Optional[float]
+    result: Optional[dict]
+    error: Optional[str]
+
+
+@app.post("/optimize/async", response_model=AsyncOptimizeResponse)
+def optimize_async(request: OptimizeRequest):
+    """
+    Submit optimization request for async processing
+
+    Returns immediately with job_id. Use GET /jobs/{job_id} to check status.
+    """
+    try:
+        # Convert request to dict
+        request_data = {
+            "depots": [d.dict() for d in request.depots],
+            "customers": [c.dict() for c in request.customers],
+            "vehicles": [v.dict() for v in request.vehicles],
+            "fuel_price": request.fuel_price,
+            "time_limit_seconds": request.time_limit_seconds,
+            "search_strategy": request.search_strategy,
+            "use_local_search": request.use_local_search,
+            "enable_time_windows": request.enable_time_windows,
+        }
+
+        # Submit to queue
+        job_queue = get_job_queue()
+        job_id = job_queue.submit_job(request_data)
+
+        return AsyncOptimizeResponse(
+            job_id=job_id,
+            status="pending",
+            message=f"Job submitted successfully. Use GET /jobs/{job_id} to check status."
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job_status(job_id: str):
+    """Get status of a specific job"""
+    job_queue = get_job_queue()
+    job_status = job_queue.get_job_status(job_id)
+
+    if not job_status:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    return JobStatusResponse(**job_status)
+
+
+@app.delete("/jobs/{job_id}")
+def cancel_job(job_id: str):
+    """Cancel a pending job"""
+    job_queue = get_job_queue()
+    cancelled = job_queue.cancel_job(job_id)
+
+    if not cancelled:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job {job_id} not found or cannot be cancelled (already running/completed)"
+        )
+
+    return {"message": f"Job {job_id} cancelled successfully"}
+
+
+@app.get("/jobs")
+def get_queue_stats():
+    """Get job queue statistics"""
+    job_queue = get_job_queue()
+    return job_queue.get_queue_stats()
+
 
 if __name__ == "__main__":
     import uvicorn
