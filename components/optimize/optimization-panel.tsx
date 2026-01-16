@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +49,9 @@ export function OptimizationPanel() {
   const [missingCoordinatesCustomers, setMissingCoordinatesCustomers] = useState<Customer[]>([])
   const [showMissingCoordinatesDialog, setShowMissingCoordinatesDialog] = useState(false)
 
+  // AbortController ile önceki optimize isteklerini iptal etme
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   const [orders, setOrders] = useState<
     { customerId: string; customerName: string; pallets: number; priority?: number }[]
   >([])
@@ -63,12 +66,26 @@ export function OptimizationPanel() {
   const [useRealDistances, setUseRealDistances] = useState(true)
   const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ortools")
 
-  const availableVehicles = vehicles.filter((v) => selectedDepots.includes(v.depot_id || ""))
-  const totalCapacity = availableVehicles.reduce((sum, v) => sum + (v.capacity_pallets || 0), 0)
-  const totalDemand = orders.reduce((sum, o) => sum + o.pallets, 0)
-  const missingCoords = customers
-    .filter((c) => orders.some((o) => o.customerId === c.id))
-    .filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
+  // useMemo ile optimize edilmiş hesaplamalar - sadece bağımlılıklar değiştiğinde yeniden hesaplanır
+  const availableVehicles = useMemo(
+    () => vehicles.filter((v) => selectedDepots.includes(v.depot_id || "")),
+    [vehicles, selectedDepots],
+  )
+
+  const totalCapacity = useMemo(
+    () => availableVehicles.reduce((sum, v) => sum + (v.capacity_pallets || 0), 0),
+    [availableVehicles],
+  )
+
+  const totalDemand = useMemo(() => orders.reduce((sum, o) => sum + o.pallets, 0), [orders])
+
+  const missingCoords = useMemo(
+    () =>
+      customers
+        .filter((c) => orders.some((o) => o.customerId === c.id))
+        .filter((c) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0),
+    [customers, orders],
+  )
 
   useEffect(() => {
     fetchData()
@@ -79,9 +96,9 @@ export function OptimizationPanel() {
       const [depotsRes, vehiclesRes, customersRes, fuelRes, ordersRes] = await Promise.all([
         fetch("/api/depots"),
         fetch("/api/vehicles"),
-        fetch("/api/customers"),
+        fetch("/api/customers?all=true"), // Optimizasyon için tüm müşteriler
         fetch("/api/fuel-price"),
-        fetch("/api/orders"),
+        fetch("/api/orders?all=true"), // Optimizasyon için tüm siparişler
       ])
 
       if (depotsRes.ok) {
@@ -181,6 +198,15 @@ export function OptimizationPanel() {
     }
 
     console.log("[v0] All validation passed, starting optimization...")
+
+    // Önceki isteği iptal et
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    // Yeni AbortController oluştur
+    abortControllerRef.current = new AbortController()
+
     setOptimizing(true)
     setOptimizeError(null)
     setProgress(10)
@@ -213,6 +239,7 @@ export function OptimizationPanel() {
           maxRouteDistanceKm: maxRouteDistance,
           maxRouteTimeMin: maxRouteDuration,
         }),
+        signal: abortControllerRef.current?.signal, // İstek iptali için
       })
 
       console.log("[v0] API response status:", response.status)
@@ -234,6 +261,13 @@ export function OptimizationPanel() {
         description: `${result.routes?.length || 0} rota oluşturuldu`,
       })
     } catch (error: any) {
+      // İstek iptal edildiyse sessizce geç
+      if (error.name === "AbortError") {
+        console.log("[v0] Optimization request aborted")
+        setOptimizing(false)
+        return
+      }
+
       console.error("[v0] Optimization error:", error)
       setOptimizing(false)
       setOptimizeError(error instanceof Error ? error.message : "Bilinmeyen hata")

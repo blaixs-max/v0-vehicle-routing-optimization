@@ -2,15 +2,22 @@ import type { DistanceMatrix } from "./types"
 import { getDistance } from "./distance"
 
 // 2-opt improvement algorithm
-export function twoOpt(route: string[], depotId: string, distanceMatrix: DistanceMatrix): string[] {
+export function twoOpt(
+  route: string[],
+  depotId: string,
+  distanceMatrix: DistanceMatrix,
+  maxIterations: number = 1000,
+): string[] {
   if (route.length < 3) return route
 
   let improved = true
   let bestRoute = [...route]
   let bestDistance = calculateRouteDistance(bestRoute, depotId, distanceMatrix)
+  let iterations = 0
 
-  while (improved) {
+  while (improved && iterations < maxIterations) {
     improved = false
+    iterations++
 
     for (let i = 0; i < bestRoute.length - 1; i++) {
       for (let j = i + 2; j < bestRoute.length; j++) {
@@ -30,6 +37,10 @@ export function twoOpt(route: string[], depotId: string, distanceMatrix: Distanc
         }
       }
     }
+  }
+
+  if (iterations >= maxIterations) {
+    console.warn(`[2-opt] Maximum iterations (${maxIterations}) reached. Route may not be fully optimized.`)
   }
 
   return bestRoute

@@ -284,10 +284,9 @@ export class VroomClient {
 
       // Duraklari parse et
       const stops: OptimizedRoute["stops"] = []
-      let prevLat = depot.lat
-      let prevLng = depot.lng
       let cumulativeLoad = 0
       let stopOrder = 0
+      let prevStepDistance = 0
 
       for (const step of route.steps) {
         if (step.type === "job" && step.job !== undefined) {
@@ -297,8 +296,9 @@ export class VroomClient {
             const demand = customer.demand_pallets || customer.demand_pallet || 1
             cumulativeLoad += demand
 
-            // Onceki noktadan mesafe (basit haversine)
-            const distFromPrev = haversineDistance(prevLat, prevLng, customer.lat, customer.lng)
+            // VROOM'dan gelen mesafe bilgisini kullan (gereksiz haversine hesaplaması yok)
+            const distFromPrev = step.distance ? (step.distance - prevStepDistance) / 1000 : 0
+            prevStepDistance = step.distance || 0
 
             stops.push({
               customerId: customer.id,
@@ -313,9 +313,6 @@ export class VroomClient {
               demand,
               cumulativeLoad,
             })
-
-            prevLat = customer.lat
-            prevLng = customer.lng
           }
         }
       }

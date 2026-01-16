@@ -2,6 +2,47 @@
 import type { MockRoute } from "@/lib/mock-data"
 
 const STORAGE_KEY = "vrp_optimized_routes"
+const MAX_STORAGE_SIZE = 5 * 1024 * 1024 // 5MB limit (localStorage genelde 5-10MB)
+
+// localStorage boyutunu kontrol et
+function getStorageSize(): number {
+  let total = 0
+  for (let key in localStorage) {
+    if (localStorage.hasOwnProperty(key)) {
+      total += localStorage[key].length + key.length
+    }
+  }
+  return total
+}
+
+// Veriyi sıkıştırılmış şekilde kaydet
+function safeSetItem(key: string, value: string): boolean {
+  try {
+    const size = value.length
+    const currentSize = getStorageSize()
+
+    // Eğer yeni veri eklendiğinde limit aşılacaksa uyar
+    if (currentSize + size > MAX_STORAGE_SIZE) {
+      console.warn(
+        `[route-store] Storage limit approaching: ${((currentSize + size) / 1024 / 1024).toFixed(2)}MB / ${MAX_STORAGE_SIZE / 1024 / 1024}MB`,
+      )
+      // Eski veriyi temizle
+      localStorage.removeItem(key)
+    }
+
+    localStorage.setItem(key, value)
+    return true
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "QuotaExceededError") {
+      console.error("[route-store] localStorage quota exceeded!")
+      // Son çare: tüm route store'u temizle
+      localStorage.removeItem(key)
+      return false
+    }
+    console.error("[route-store] Error saving to localStorage:", error)
+    return false
+  }
+}
 
 export type RouteStatus = "pending" | "approved" | "in_progress" | "completed" | "cancelled"
 
@@ -22,7 +63,11 @@ export interface StoredRouteData {
   timestamp?: number
 }
 
-export function saveOptimizedRoutes(routes: MockRoute[], summary: StoredRouteData["summary"], provider: string): void {
+export function saveOptimizedRoutes(
+  routes: MockRoute[],
+  summary: StoredRouteData["summary"],
+  provider: string,
+): boolean {
   if (typeof window !== "undefined") {
     const data: StoredRouteData = {
       routes,
@@ -34,10 +79,23 @@ export function saveOptimizedRoutes(routes: MockRoute[], summary: StoredRouteDat
       provider,
       timestamp: Date.now(),
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-    // Dispatch custom event to notify other components
-    window.dispatchEvent(new CustomEvent("routes-updated", { detail: data }))
+
+    const jsonString = JSON.stringify(data)
+    const success = safeSetItem(STORAGE_KEY, jsonString)
+
+    if (success) {
+      // Dispatch custom event to notify other components
+      window.dispatchEvent(new CustomEvent("routes-updated", { detail: data }))
+      console.log(
+        `[route-store] Routes saved successfully (${(jsonString.length / 1024).toFixed(2)}KB)`,
+      )
+    } else {
+      console.error("[route-store] Failed to save routes - storage quota exceeded")
+    }
+
+    return success
   }
+  return false
 }
 
 export function getOptimizedRoutes(): StoredRouteData | null {
@@ -53,11 +111,11 @@ export function getOptimizedRoutes(): StoredRouteData | null {
   }
 }
 
-export function updateRouteStatus(routeId: string, newStatus: RouteStatus): void {
-  if (typeof window === "undefined") return
+export function updateRouteStatus(routeId: string, newStatus: RouteStatus): boolean {
+  if (typeof window === "undefined") return false
 
   const stored = getOptimizedRoutes()
-  if (!stored) return
+  if (!stored) return false
 
   const updatedRoutes = stored.routes.map((route) => {
     if (route.id === routeId) {
@@ -71,15 +129,18 @@ export function updateRouteStatus(routeId: string, newStatus: RouteStatus): void
     routes: updatedRoutes,
   }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData))
-  window.dispatchEvent(new CustomEvent("routes-updated", { detail: updatedData }))
+  const success = safeSetItem(STORAGE_KEY, JSON.stringify(updatedData))
+  if (success) {
+    window.dispatchEvent(new CustomEvent("routes-updated", { detail: updatedData }))
+  }
+  return success
 }
 
-export function approveAllRoutes(): void {
-  if (typeof window === "undefined") return
+export function approveAllRoutes(): boolean {
+  if (typeof window === "undefined") return false
 
   const stored = getOptimizedRoutes()
-  if (!stored) return
+  if (!stored) return false
 
   const updatedRoutes = stored.routes.map((route) => ({
     ...route,
@@ -91,15 +152,18 @@ export function approveAllRoutes(): void {
     routes: updatedRoutes,
   }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData))
-  window.dispatchEvent(new CustomEvent("routes-updated", { detail: updatedData }))
+  const success = safeSetItem(STORAGE_KEY, JSON.stringify(updatedData))
+  if (success) {
+    window.dispatchEvent(new CustomEvent("routes-updated", { detail: updatedData }))
+  }
+  return success
 }
 
-export function approveSelectedRoutes(routeIds: string[]): void {
-  if (typeof window === "undefined") return
+export function approveSelectedRoutes(routeIds: string[]): boolean {
+  if (typeof window === "undefined") return false
 
   const stored = getOptimizedRoutes()
-  if (!stored) return
+  if (!stored) return false
 
   const updatedRoutes = stored.routes.map((route) => {
     if (routeIds.includes(route.id) && route.status === "pending") {
@@ -113,8 +177,11 @@ export function approveSelectedRoutes(routeIds: string[]): void {
     routes: updatedRoutes,
   }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData))
-  window.dispatchEvent(new CustomEvent("routes-updated", { detail: updatedData }))
+  const success = safeSetItem(STORAGE_KEY, JSON.stringify(updatedData))
+  if (success) {
+    window.dispatchEvent(new CustomEvent("routes-updated", { detail: updatedData }))
+  }
+  return success
 }
 
 export function clearOptimizedRoutes(): void {
