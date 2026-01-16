@@ -34,9 +34,9 @@ async function optimizeWithRailway(
     })),
     vehicles: vehicles.map((v) => ({
       id: v.id,
-      type: 2,
-      capacity_pallets: v.capacity_pallet || 12,
-      fuel_consumption: v.fuel_consumption || 25,
+      type: v.vehicle_type === 'tir' ? 3 : (v.vehicle_type === 'kamyon' ? 1 : 2),
+      capacity_pallets: v.capacity_pallets || 12,
+      fuel_consumption: v.fuel_consumption_per_100km || 25,
       plate: v.plate || v.license_plate || `Araç ${v.id}`,
     })),
     fuel_price: options.fuelPricePerLiter || 47.5,
