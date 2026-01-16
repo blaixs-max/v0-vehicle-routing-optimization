@@ -14,6 +14,16 @@ async function optimizeWithRailway(
     throw new Error("Railway API URL not configured")
   }
 
+  // Map orders to customers to get actual demand
+  const customerDemandMap = new Map<string, number>()
+  orders.forEach((order: any) => {
+    const currentDemand = customerDemandMap.get(order.customerId) || 0
+    customerDemandMap.set(order.customerId, currentDemand + (order.pallets || 0))
+  })
+
+  const totalDemand = Array.from(customerDemandMap.values()).reduce((sum, d) => sum + d, 0)
+  console.log("[optimize] Orders processed:", orders.length, "Total demand:", totalDemand, "pallets")
+
   const railwayRequest: any = {
     depots: depots.map((d) => ({
       id: d.id,
@@ -24,7 +34,7 @@ async function optimizeWithRailway(
       id: c.id,
       name: c.name,
       location: { lat: c.lat, lng: c.lng },
-      demand_pallets: c.demand_pallets || 1,
+      demand_pallets: customerDemandMap.get(c.id) || c.demand_pallets || 1,
       business_type: c.business_type || "restaurant",
       service_duration: c.service_duration || 30,
       has_time_constraint: c.has_time_constraint || false,
