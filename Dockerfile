@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements-railway.txt
 COPY railway/main.py main.py
 COPY railway/ortools_optimizer.py ortools_optimizer.py
 COPY railway/ortools_optimizer_v2.py ortools_optimizer_v2.py
+COPY railway/job_queue.py job_queue.py
 
 # Expose port
 EXPOSE 8080
