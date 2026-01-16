@@ -433,8 +433,187 @@ def _optimize_multi_depot(
     fuel_price: float,
     config: OptimizerConfig
 ) -> dict:
-    """Optimized multi-depot VRP solver"""
-    # Implementation similar to single-depot but with multi-depot support
-    # For now, use single-depot with first depot (can be improved later)
-    print(f"[OR-Tools] Multi-depot optimization - using primary depot for now")
-    return _optimize_single_depot(depots[0], depots, customers, vehicles, fuel_price, config)
+    """
+    Optimized multi-depot VRP solver
+
+    Strategy:
+    1. Assign each customer to nearest depot
+    2. Distribute vehicles across depots proportionally
+    3. Optimize each depot independently
+    4. Combine results
+    """
+    try:
+        start_time = time.time()
+        print(f"[OR-Tools] ========== MULTI-DEPOT OPTIMIZATION ==========")
+        print(f"[OR-Tools] Depots: {len(depots)}, Customers: {len(customers)}, Vehicles: {len(vehicles)}")
+
+        # Step 1: Assign customers to nearest depot
+        depot_assignments = {}  # depot_id -> list of customers
+        customer_depot_map = {}  # customer_id -> depot_id
+
+        for depot in depots:
+            depot_assignments[depot["id"]] = []
+
+        print(f"[OR-Tools] Assigning customers to nearest depot...")
+        for customer in customers:
+            customer_lat = customer["location"]["lat"]
+            customer_lng = customer["location"]["lng"]
+
+            # Find nearest depot
+            nearest_depot = None
+            min_distance = float('inf')
+
+            for depot in depots:
+                depot_lat = depot["location"]["lat"]
+                depot_lng = depot["location"]["lng"]
+
+                distance = cached_haversine_distance(
+                    customer_lat, customer_lng,
+                    depot_lat, depot_lng
+                )
+
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_depot = depot
+
+            if nearest_depot:
+                depot_assignments[nearest_depot["id"]].append(customer)
+                customer_depot_map[customer["id"]] = nearest_depot["id"]
+
+        # Print assignment summary
+        for depot in depots:
+            depot_id = depot["id"]
+            num_customers = len(depot_assignments[depot_id])
+            depot_name = depot.get("name", depot_id)
+            print(f"[OR-Tools]   {depot_name}: {num_customers} customers")
+
+        # Step 2: Distribute vehicles across depots based on demand
+        total_demand = sum(c.get("demand_pallets", 1) for c in customers)
+        depot_demands = {}
+
+        for depot_id, assigned_customers in depot_assignments.items():
+            depot_demands[depot_id] = sum(c.get("demand_pallets", 1) for c in assigned_customers)
+
+        # Distribute vehicles proportionally to demand
+        depot_vehicles = {}  # depot_id -> list of vehicles
+        vehicles_copy = vehicles.copy()
+
+        # Sort depots by demand (descending)
+        sorted_depot_ids = sorted(depot_demands.keys(), key=lambda d: depot_demands[d], reverse=True)
+
+        print(f"[OR-Tools] Distributing {len(vehicles)} vehicles across depots...")
+
+        for depot_id in sorted_depot_ids:
+            depot_demand = depot_demands[depot_id]
+
+            if depot_demand == 0:
+                depot_vehicles[depot_id] = []
+                continue
+
+            # Allocate vehicles to meet demand
+            depot_vehicles[depot_id] = []
+            allocated_capacity = 0
+
+            for vehicle in vehicles_copy[:]:
+                vehicle_capacity = vehicle.get("capacity_pallets", 26)
+                depot_vehicles[depot_id].append(vehicle)
+                allocated_capacity += vehicle_capacity
+                vehicles_copy.remove(vehicle)
+
+                # Stop when we have enough capacity or no more vehicles
+                if allocated_capacity >= depot_demand or len(vehicles_copy) == 0:
+                    break
+
+            depot_name = next((d.get("name", depot_id) for d in depots if d["id"] == depot_id), depot_id)
+            print(f"[OR-Tools]   {depot_name}: {len(depot_vehicles[depot_id])} vehicles (capacity: {allocated_capacity}, demand: {depot_demand})")
+
+        # Distribute remaining vehicles to depots with customers
+        if vehicles_copy:
+            print(f"[OR-Tools] Distributing {len(vehicles_copy)} remaining vehicles...")
+            for vehicle in vehicles_copy:
+                # Find depot with most customers that still needs vehicles
+                for depot_id in sorted_depot_ids:
+                    if len(depot_assignments[depot_id]) > 0:
+                        depot_vehicles[depot_id].append(vehicle)
+                        break
+
+        # Step 3: Optimize each depot independently
+        all_routes = []
+        total_distance = 0
+        depot_summaries = []
+
+        for depot in depots:
+            depot_id = depot["id"]
+            assigned_customers = depot_assignments[depot_id]
+            assigned_vehicles = depot_vehicles.get(depot_id, [])
+
+            # Skip depots with no customers or vehicles
+            if len(assigned_customers) == 0:
+                print(f"[OR-Tools] Skipping depot {depot.get('name', depot_id)} (no customers)")
+                continue
+
+            if len(assigned_vehicles) == 0:
+                print(f"[OR-Tools] WARNING: Depot {depot.get('name', depot_id)} has customers but no vehicles!")
+                continue
+
+            print(f"[OR-Tools] Optimizing depot: {depot.get('name', depot_id)}")
+            print(f"[OR-Tools]   Customers: {len(assigned_customers)}, Vehicles: {len(assigned_vehicles)}")
+
+            # Optimize this depot
+            depot_result = _optimize_single_depot(
+                depot,
+                depots,
+                assigned_customers,
+                assigned_vehicles,
+                fuel_price,
+                config
+            )
+
+            # Add routes from this depot
+            all_routes.extend(depot_result["routes"])
+            total_distance += depot_result["summary"]["total_distance_km"]
+
+            depot_summaries.append({
+                "depot_id": depot_id,
+                "depot_name": depot.get("name", depot_id),
+                "customers": len(assigned_customers),
+                "routes": len(depot_result["routes"]),
+                "distance_km": depot_result["summary"]["total_distance_km"],
+                "vehicles_used": depot_result["summary"]["total_vehicles_used"]
+            })
+
+        elapsed = time.time() - start_time
+
+        print(f"[OR-Tools] ========== MULTI-DEPOT OPTIMIZATION COMPLETE ==========")
+        print(f"[OR-Tools] Total routes: {len(all_routes)} across {len(depot_summaries)} depots")
+        print(f"[OR-Tools] Total distance: {round(total_distance, 2)} km")
+        print(f"[OR-Tools] Computation time: {elapsed:.2f}s")
+
+        # Calculate total costs
+        total_fuel_cost = sum(r["fuel_cost"] for r in all_routes)
+        total_distance_cost = sum(r["distance_cost"] for r in all_routes)
+        total_fixed_cost = sum(r["fixed_cost"] for r in all_routes)
+        total_toll_cost = sum(r["toll_cost"] for r in all_routes)
+        total_cost = sum(r["total_cost"] for r in all_routes)
+
+        return {
+            "routes": all_routes,
+            "summary": {
+                "total_routes": len(all_routes),
+                "total_distance_km": round(total_distance, 2),
+                "total_vehicles_used": len(all_routes),
+                "total_depots_used": len(depot_summaries),
+                "total_fuel_cost": round(total_fuel_cost, 2),
+                "total_distance_cost": round(total_distance_cost, 2),
+                "total_fixed_cost": round(total_fixed_cost, 2),
+                "total_toll_cost": round(total_toll_cost, 2),
+                "total_cost": round(total_cost, 2),
+                "algorithm": "OR-Tools Multi-Depot",
+                "computation_time_seconds": round(elapsed, 2),
+                "depot_breakdown": depot_summaries
+            }
+        }
+
+    except Exception as e:
+        print(f"[OR-Tools] ERROR during multi-depot optimization: {e}")
+        raise e
