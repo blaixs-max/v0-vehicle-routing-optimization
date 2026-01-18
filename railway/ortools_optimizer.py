@@ -458,16 +458,15 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC  # Let OR-Tools choose fastest
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC  # Faster initial solution
         )
-        # search_parameters.local_search_metaheuristic = (
-        #     routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT
-        # )
-        search_parameters.time_limit.seconds = 30
+        search_parameters.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH  # Better optimization
+        )
+        search_parameters.time_limit.seconds = 120  # Increased from 30 to 120 seconds
         search_parameters.log_search = True
-        search_parameters.solution_limit = 1
         
-        print(f"[OR-Tools] Starting solver with 30s timeout and solution limit 1...")
+        print(f"[OR-Tools] Starting solver with 120s timeout and guided local search...")
         solution = routing.SolveWithParameters(search_parameters)
         
         if not solution:
