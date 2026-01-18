@@ -88,6 +88,23 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
             print(f"[OR-Tools] WARNING: Customer {customer.get('id')} has no depot_id, assigning to first depot")
             customers_by_depot[depots[0]["id"]].append(customer)
     
+    # Calculate total demand per depot
+    depot_demands = {}
+    total_demand = 0
+    for depot in depots:
+        depot_customers = customers_by_depot[depot["id"]]
+        depot_demand = sum(c.get("demand_pallets", 0) for c in depot_customers)
+        depot_demands[depot["id"]] = depot_demand
+        total_demand += depot_demand
+        print(f"[OR-Tools] Depot {depot['id']}: {len(depot_customers)} customers, {depot_demand} pallets demand")
+    
+    # Distribute vehicles proportionally to demand
+    total_capacity = sum(v.get("capacity_pallets", 26) for v in vehicles)
+    print(f"[OR-Tools] Total demand: {total_demand} pallets, Total capacity: {total_capacity} pallets")
+    
+    if total_demand > total_capacity:
+        raise ValueError(f"Insufficient capacity: {total_demand} > {total_capacity}")
+    
     # Optimize each depot separately
     all_routes = []
     vehicle_offset = 0
@@ -98,14 +115,23 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
             print(f"[OR-Tools] Skipping depot {depot['id']}: No customers assigned")
             continue
         
-        # Calculate vehicles for this depot (distribute evenly)
-        vehicles_for_depot = len(vehicles) // len(depots)
-        if depot == depots[-1]:  # Last depot gets remaining vehicles
+        # Calculate vehicles for this depot based on demand proportion
+        depot_demand = depot_demands[depot["id"]]
+        if total_demand > 0:
+            vehicles_for_depot = max(1, int(len(vehicles) * depot_demand / total_demand))
+        else:
+            vehicles_for_depot = 1
+        
+        # Ensure we don't exceed available vehicles
+        vehicles_for_depot = min(vehicles_for_depot, len(vehicles) - vehicle_offset)
+        
+        # Last depot gets all remaining vehicles
+        if depot == depots[-1]:
             vehicles_for_depot = len(vehicles) - vehicle_offset
         
         depot_vehicles = vehicles[vehicle_offset:vehicle_offset + vehicles_for_depot]
         
-        print(f"[OR-Tools] Optimizing depot {depot['id']}: {len(depot_customers)} customers, {len(depot_vehicles)} vehicles")
+        print(f"[OR-Tools] Optimizing depot {depot['id']}: {len(depot_customers)} customers, {depot_demand} pallets, {len(depot_vehicles)} vehicles")
         
         # Optimize this depot
         depot_result = _optimize_single_depot(depot, depots, depot_customers, depot_vehicles, fuel_price)
