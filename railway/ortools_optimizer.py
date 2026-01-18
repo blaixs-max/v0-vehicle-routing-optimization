@@ -72,8 +72,49 @@ def parse_time_constraint(constraint: str) -> tuple:
     return (0, 24 * 60)
 
 def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: float = 47.50) -> dict:
-    """Simplified single-depot VRP optimizer for fastest results"""
-    return _optimize_single_depot(depots[0], depots, customers, vehicles, fuel_price)
+    """Multi-depot VRP optimizer"""
+    # Group customers by depot
+    customers_by_depot = {}
+    for depot in depots:
+        customers_by_depot[depot["id"]] = []
+    
+    # Assign each customer to their assigned depot
+    for customer in customers:
+        depot_id = customer.get("depot_id")
+        if depot_id and depot_id in customers_by_depot:
+            customers_by_depot[depot_id].append(customer)
+        else:
+            # Fallback: assign to first depot if no depot_id
+            print(f"[OR-Tools] WARNING: Customer {customer.get('id')} has no depot_id, assigning to first depot")
+            customers_by_depot[depots[0]["id"]].append(customer)
+    
+    # Optimize each depot separately
+    all_routes = []
+    vehicle_offset = 0
+    
+    for depot in depots:
+        depot_customers = customers_by_depot[depot["id"]]
+        if not depot_customers:
+            print(f"[OR-Tools] Skipping depot {depot['id']}: No customers assigned")
+            continue
+        
+        # Calculate vehicles for this depot (distribute evenly)
+        vehicles_for_depot = len(vehicles) // len(depots)
+        if depot == depots[-1]:  # Last depot gets remaining vehicles
+            vehicles_for_depot = len(vehicles) - vehicle_offset
+        
+        depot_vehicles = vehicles[vehicle_offset:vehicle_offset + vehicles_for_depot]
+        
+        print(f"[OR-Tools] Optimizing depot {depot['id']}: {len(depot_customers)} customers, {len(depot_vehicles)} vehicles")
+        
+        # Optimize this depot
+        depot_result = _optimize_single_depot(depot, depots, depot_customers, depot_vehicles, fuel_price)
+        
+        # Add depot routes to all routes
+        all_routes.extend(depot_result["routes"])
+        vehicle_offset += vehicles_for_depot
+    
+    return {"routes": all_routes}
 
 def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: list, vehicles: list, fuel_price: float) -> dict:
     """Single depot optimization (stable fallback)"""

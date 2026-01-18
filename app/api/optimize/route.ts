@@ -432,6 +432,7 @@ async function optimizeWithRailway(
       return {
         id: c.id,
         name: c.name || c.company_name || `Müşteri ${c.id}`,
+        depot_id: c.depot_id || null,  // Customer's assigned depot
         location: {
           lat: c.lat,
           lng: c.lng,
