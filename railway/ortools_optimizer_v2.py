@@ -513,10 +513,9 @@ def _optimize_multi_depot(
                 depot_vehicles[depot_id] = []
                 continue
 
-            # Allocate vehicles to meet demand (with 20% buffer)
+            # FIRST PASS: Allocate vehicles to meet MINIMUM demand only (no buffer yet)
             depot_vehicles[depot_id] = []
             allocated_capacity = 0
-            target_capacity = int(depot_demand * 1.2)  # 20% buffer
 
             for vehicle in vehicles_copy[:]:
                 vehicle_capacity = vehicle.get("capacity_pallets", 26)
@@ -524,22 +523,18 @@ def _optimize_multi_depot(
                 allocated_capacity += vehicle_capacity
                 vehicles_copy.remove(vehicle)
 
-                # Stop when we have enough capacity (with buffer) or no more vehicles
-                if allocated_capacity >= target_capacity or len(vehicles_copy) == 0:
+                # Stop when we meet minimum demand (not buffer yet!)
+                if allocated_capacity >= depot_demand:
                     break
 
-                # Minimum: must meet actual demand
-                if allocated_capacity >= depot_demand and len(vehicles_copy) > 0:
-                    # Check if we're close to target, if not add one more
-                    if allocated_capacity < depot_demand * 1.1:
-                        continue
-                    else:
-                        break
+                # Or if no more vehicles
+                if len(vehicles_copy) == 0:
+                    break
 
             depot_name = next((d.get("name", depot_id) for d in depots if d["id"] == depot_id), depot_id)
             print(f"[OR-Tools]   {depot_name}: {len(depot_vehicles[depot_id])} vehicles (capacity: {allocated_capacity}, demand: {depot_demand})")
 
-            # If still insufficient, keep adding vehicles until demand is met
+            # Safety check: If still insufficient, keep adding vehicles until demand is met
             while allocated_capacity < depot_demand and len(vehicles_copy) > 0:
                 # Find largest remaining vehicle
                 largest_vehicle = max(vehicles_copy, key=lambda v: v.get("capacity_pallets", 26))
