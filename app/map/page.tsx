@@ -60,7 +60,24 @@ export default function MapPage() {
   const customers = customersData || []
 
   useEffect(() => {
-    loadOptimizedRoutes()
+    // Load saved routes from database (highest priority)
+    if (savedRoutesData && savedRoutesData.length > 0) {
+      console.log("[v0] Loading saved routes from database:", savedRoutesData.length)
+      const formattedRoutes = savedRoutesData.map((r: any) => ({
+        id: r.id,
+        vehicle_id: r.vehicle_id,
+        depot_id: r.depot_id,
+        stops: [], // Will be loaded from route_stops table
+        total_distance: r.total_distance || 0,
+        total_duration: r.total_duration || 0,
+        total_cost: r.total_cost || 0,
+        status: r.status || "pending",
+      }))
+      setRoutes(formattedRoutes)
+    } else {
+      // Fallback to localStorage optimization results
+      loadOptimizedRoutes()
+    }
 
     const handleRoutesUpdate = (event: CustomEvent<StoredRouteData | null>) => {
       if (event.detail) {
@@ -77,12 +94,13 @@ export default function MapPage() {
     return () => {
       window.removeEventListener("routes-updated", handleRoutesUpdate as EventListener)
     }
-  }, [mutateRoutes])
+  }, [savedRoutesData, mutateRoutes])
 
   const loadOptimizedRoutes = () => {
     try {
       const stored = getOptimizedRoutes()
       if (stored && stored.routes && stored.routes.length > 0) {
+        console.log("[v0] Loading optimized routes from localStorage:", stored.routes.length)
         setOptimizedData(stored)
         setRoutes(stored.routes)
       }
