@@ -1,7 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { mockVehicles, mockDepots } from "@/lib/mock-data"
+import { useState } from "react"
 import type { Vehicle, Depot } from "@/lib/types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -13,6 +12,7 @@ import { MoreHorizontal, Pencil, Trash2, Search, Fuel } from "lucide-react"
 import { DEPOT_COLORS, VEHICLE_TYPES } from "@/lib/constants"
 import { VehicleFormDialog } from "./vehicle-form-dialog"
 import { Card } from "@/components/ui/card"
+import { useVehicles, useDepots } from "@/lib/hooks/use-depot-data"
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   available: { label: "Müsait", variant: "default" },
@@ -23,50 +23,28 @@ const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secon
 }
 
 export function VehiclesTable() {
-  const [vehicles, setVehicles] = useState<(Vehicle & { depot?: Depot })[]>([])
-  const [depots, setDepots] = useState<Depot[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: vehiclesData, isLoading: vehiclesLoading } = useVehicles()
+  const { data: depotsData, isLoading: depotsLoading } = useDepots()
+  
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null)
   const [search, setSearch] = useState("")
   const [filterDepot, setFilterDepot] = useState<string>("all")
   const [filterType, setFilterType] = useState<string>("all")
 
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  async function fetchData() {
-    try {
-      const [vehiclesRes, depotsRes] = await Promise.all([fetch("/api/vehicles"), fetch("/api/depots")])
-
-      const [vehiclesData, depotsData] = await Promise.all([vehiclesRes.json(), depotsRes.json()])
-
-      const vehiclesWithDepot = vehiclesData.map((v: Vehicle) => ({
-        ...v,
-        depot: depotsData.find((d: Depot) => d.id === v.depot_id),
-      }))
-
-      setVehicles(vehiclesWithDepot)
-      setDepots(depotsData)
-    } catch (error) {
-      console.error("Failed to fetch data:", error)
-      const vehiclesWithDepot = mockVehicles.map((v) => ({
-        ...v,
-        depot: mockDepots.find((d) => d.id === v.depot_id),
-      }))
-      setVehicles(vehiclesWithDepot)
-      setDepots(mockDepots)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const loading = vehiclesLoading || depotsLoading
+  const depots = depotsData || []
+  const vehicles = (vehiclesData || []).map((v: Vehicle) => ({
+    ...v,
+    depot: depots.find((d: Depot) => d.id === v.depot_id),
+  }))
 
   async function deleteVehicle(id: string) {
     if (!confirm("Bu aracı silmek istediğinize emin misiniz?")) return
 
     try {
       await fetch(`/api/vehicles?id=${id}`, { method: "DELETE" })
-      fetchData()
+      // Trigger SWR revalidation after deletion
+      window.location.reload()
     } catch (error) {
       console.error("Failed to delete vehicle:", error)
     }
@@ -202,7 +180,7 @@ export function VehiclesTable() {
         onOpenChange={(open) => !open && setEditingVehicle(null)}
         vehicle={editingVehicle}
         depots={depots}
-        onSuccess={fetchData}
+        onSuccess={() => window.location.reload()}
       />
     </>
   )

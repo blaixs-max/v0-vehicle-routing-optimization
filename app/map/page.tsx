@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { FullscreenMap } from "@/components/map/fullscreen-map"
-import { mockDepots, mockVehicles, mockCustomers, mockRoutes, type MockRoute } from "@/lib/mock-data"
+import { mockRoutes, type MockRoute } from "@/lib/mock-data"
 import {
   getOptimizedRoutes,
   updateRouteStatus,
@@ -11,7 +11,6 @@ import {
   type StoredRouteData,
   type RouteStatus,
 } from "@/lib/route-store"
-import type { Depot, Vehicle, Customer } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -41,20 +40,26 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useCustomers, useVehicles, useDepots, useRoutes } from "@/lib/hooks/use-depot-data"
 
 export default function MapPage() {
-  const [depots, setDepots] = useState<Depot[]>([])
-  const [vehicles, setVehicles] = useState<Vehicle[]>([])
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const { data: depotsData, isLoading: depotsLoading } = useDepots()
+  const { data: vehiclesData, isLoading: vehiclesLoading } = useVehicles()
+  const { data: customersData, isLoading: customersLoading } = useCustomers()
+  const { data: savedRoutesData, mutate: mutateRoutes } = useRoutes()
+  
   const [routes, setRoutes] = useState<MockRoute[]>([])
-  const [loading, setLoading] = useState(true)
   const [selectedRoute, setSelectedRoute] = useState<MockRoute | null>(null)
   const [showRoutePanel, setShowRoutePanel] = useState(true)
   const [optimizedData, setOptimizedData] = useState<StoredRouteData | null>(null)
   const [mobileView, setMobileView] = useState<"list" | "map">("list")
 
+  const loading = depotsLoading || vehiclesLoading || customersLoading
+  const depots = depotsData || []
+  const vehicles = vehiclesData || []
+  const customers = customersData || []
+
   useEffect(() => {
-    fetchData()
     loadOptimizedRoutes()
 
     const handleRoutesUpdate = (event: CustomEvent<StoredRouteData | null>) => {
@@ -65,13 +70,14 @@ export default function MapPage() {
         setOptimizedData(null)
         setRoutes(mockRoutes)
       }
+      mutateRoutes()
     }
 
     window.addEventListener("routes-updated", handleRoutesUpdate as EventListener)
     return () => {
       window.removeEventListener("routes-updated", handleRoutesUpdate as EventListener)
     }
-  }, [])
+  }, [mutateRoutes])
 
   const loadOptimizedRoutes = () => {
     try {
@@ -85,42 +91,6 @@ export default function MapPage() {
     }
   }
 
-  const fetchData = async () => {
-    try {
-      const [depotsRes, vehiclesRes, customersRes] = await Promise.all([
-        fetch("/api/depots"),
-        fetch("/api/vehicles"),
-        fetch("/api/customers"),
-      ])
-
-      const [depotsData, vehiclesData, customersData] = await Promise.all([
-        depotsRes.json(),
-        vehiclesRes.json(),
-        customersRes.json(),
-      ])
-
-      setDepots(depotsData.filter((d: Depot) => d.status === "active"))
-      setVehicles(vehiclesData.filter((v: Vehicle) => v.status === "active"))
-      setCustomers(customersData.filter((c: Customer) => c.status === "active"))
-
-      const stored = getOptimizedRoutes()
-      if (!stored || !stored.routes || stored.routes.length === 0) {
-        setRoutes(mockRoutes)
-      }
-    } catch (error) {
-      console.error("Error fetching data:", error)
-      setDepots(mockDepots as Depot[])
-      setVehicles(mockVehicles as Vehicle[])
-      setCustomers(mockCustomers as Customer[])
-      const stored = getOptimizedRoutes()
-      if (!stored || !stored.routes || stored.routes.length === 0) {
-        setRoutes(mockRoutes)
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const handleStatusChange = (routeId: string, newStatus: RouteStatus) => {
     updateRouteStatus(routeId, newStatus)
   }
@@ -130,11 +100,11 @@ export default function MapPage() {
   }
 
   const getVehicleByRoute = (route: MockRoute) => {
-    return vehicles.find((v) => v.id === route.vehicle_id) || mockVehicles.find((v) => v.id === route.vehicle_id)
+    return vehicles.find((v: any) => v.id === route.vehicle_id)
   }
 
   const getDepotByRoute = (route: MockRoute) => {
-    return depots.find((d) => d.id === route.depot_id) || mockDepots.find((d) => d.id === route.depot_id)
+    return depots.find((d: any) => d.id === route.depot_id)
   }
 
   const getStatusColor = (status: string) => {

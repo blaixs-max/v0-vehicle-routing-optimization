@@ -23,12 +23,15 @@ import {
 } from "lucide-react"
 import { DashboardMap } from "@/components/dashboard/map"
 import { getOptimizedRoutes, type StoredRouteData } from "@/lib/route-store"
-import { mockDepots, mockVehicles, mockCustomers } from "@/lib/mock-data"
 import Link from "next/link"
+import { useCustomers, useVehicles, useDepots } from "@/lib/hooks/use-depot-data"
 
 export function DashboardOverview() {
   const [routeData, setRouteData] = useState<StoredRouteData | null>(null)
-  const [loading, setLoading] = useState(true)
+  
+  const { data: customers } = useCustomers()
+  const { data: vehicles } = useVehicles()
+  const { data: depots } = useDepots()
 
   useEffect(() => {
     try {
@@ -37,7 +40,6 @@ export function DashboardOverview() {
     } catch (error) {
       console.error("Error loading route data:", error)
     }
-    setLoading(false)
 
     const handleRoutesUpdated = (event: CustomEvent) => {
       setRouteData(event.detail)
@@ -47,16 +49,20 @@ export function DashboardOverview() {
     return () => window.removeEventListener("routes-updated", handleRoutesUpdated as EventListener)
   }, [])
 
+  const customersList = customers || []
+  const vehiclesList = vehicles || []
+  const depotsList = depots || []
+
   const stats = {
     totalRoutes: routeData?.summary?.totalRoutes || routeData?.routes?.length || 0,
     totalDistance: routeData?.summary?.totalDistance || 0,
     totalDuration: routeData?.summary?.totalDuration || 0,
     totalCost: routeData?.summary?.totalCost || 0,
-    totalDepots: mockDepots.length,
-    totalVehicles: mockVehicles.length,
-    availableVehicles: mockVehicles.filter((v) => v.status === "available").length,
-    totalCustomers: mockCustomers.length,
-    pendingCustomers: mockCustomers.filter((c) => c.status === "pending").length,
+    totalDepots: depotsList.length,
+    totalVehicles: vehiclesList.length,
+    availableVehicles: vehiclesList.filter((v: any) => v.status === "available").length,
+    totalCustomers: customersList.length,
+    pendingCustomers: customersList.filter((c: any) => c.status === "pending").length,
   }
 
   const optimizedAt = routeData?.optimizedAt ? new Date(routeData.optimizedAt) : null

@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { mockCustomers, mockDepots } from "@/lib/mock-data"
 import { getCustomerCoordinates } from "@/lib/customer-store"
 import type { Customer, Depot } from "@/lib/types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -15,11 +14,12 @@ import { DEPOT_COLORS } from "@/lib/constants"
 import { CustomerFormDialog } from "./customer-form-dialog"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useCustomers, useDepots } from "@/lib/hooks/use-depot-data"
 
 export function CustomersTable() {
-  const [customers, setCustomers] = useState<(Customer & { assigned_depot?: Depot | null })[]>([])
-  const [depots, setDepots] = useState<Depot[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: customersData, isLoading: customersLoading, mutate: mutateCustomers } = useCustomers()
+  const { data: depotsData, isLoading: depotsLoading } = useDepots()
+  
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [search, setSearch] = useState("")
   const [filterDepot, setFilterDepot] = useState<string>("all")
@@ -27,62 +27,36 @@ export function CustomersTable() {
   const [page, setPage] = useState(0)
   const pageSize = 20
 
-  useEffect(() => {
-    fetchData()
+  const loading = customersLoading || depotsLoading
+  const depots = depotsData || []
+  
+  const savedCoords = getCustomerCoordinates()
+  const customers = (customersData || []).map((c: Customer) => {
+    const saved = savedCoords[c.id]
+    return {
+      ...c,
+      lat: saved?.lat ?? c.lat,
+      lng: saved?.lng ?? c.lng,
+      assigned_depot: depots.find((d: Depot) => d.id === c.assigned_depot_id),
+    }
+  })
 
+  useEffect(() => {
     const handleCoordinateUpdate = () => {
-      fetchData()
+      mutateCustomers()
     }
     window.addEventListener("customer-coordinates-updated", handleCoordinateUpdate)
     return () => {
       window.removeEventListener("customer-coordinates-updated", handleCoordinateUpdate)
     }
-  }, [])
-
-  async function fetchData() {
-    try {
-      const [customersRes, depotsRes] = await Promise.all([fetch("/api/customers"), fetch("/api/depots")])
-
-      const [customersData, depotsData] = await Promise.all([customersRes.json(), depotsRes.json()])
-
-      const savedCoords = getCustomerCoordinates()
-      const customersWithDepot = customersData.map((c: Customer) => {
-        const saved = savedCoords[c.id]
-        return {
-          ...c,
-          lat: saved?.lat ?? c.lat,
-          lng: saved?.lng ?? c.lng,
-          assigned_depot: depotsData.find((d: Depot) => d.id === c.assigned_depot_id),
-        }
-      })
-
-      setCustomers(customersWithDepot)
-      setDepots(depotsData)
-    } catch (error) {
-      console.error("Failed to fetch data:", error)
-      const savedCoords = getCustomerCoordinates()
-      const customersWithDepot = mockCustomers.map((c) => {
-        const saved = savedCoords[c.id]
-        return {
-          ...c,
-          lat: saved?.lat ?? c.lat,
-          lng: saved?.lng ?? c.lng,
-          assigned_depot: mockDepots.find((d) => d.id === c.assigned_depot_id),
-        }
-      })
-      setCustomers(customersWithDepot)
-      setDepots(mockDepots)
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [mutateCustomers])
 
   async function deleteCustomer(id: string) {
     if (!confirm("Bu müşteriyi silmek istediğinize emin misiniz?")) return
 
     try {
       await fetch(`/api/customers?id=${id}`, { method: "DELETE" })
-      fetchData()
+      mutateCustomers()
     } catch (error) {
       console.error("Failed to delete customer:", error)
     }
@@ -393,7 +367,7 @@ export function CustomersTable() {
         onOpenChange={(open) => !open && setEditingCustomer(null)}
         customer={editingCustomer}
         depots={depots}
-        onSuccess={fetchData}
+        onSuccess={() => mutateCustomers()}
       />
     </>
   )
