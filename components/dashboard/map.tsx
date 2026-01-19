@@ -56,6 +56,13 @@ export function DashboardMap() {
 
     async function initMap() {
       if (typeof window === "undefined") return
+      
+      // Check if map container exists and has dimensions
+      if (!mapRef.current || mapRef.current.clientHeight === 0) {
+        console.log("[v0] Map container not ready, waiting...")
+        setTimeout(initMap, 100)
+        return
+      }
 
       const leaflet = await import("leaflet")
       L = leaflet.default || leaflet
@@ -66,13 +73,20 @@ export function DashboardMap() {
         link.rel = "stylesheet"
         link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         document.head.appendChild(link)
+        
+        // Wait for CSS to load
+        await new Promise(resolve => {
+          link.onload = resolve
+          setTimeout(resolve, 500) // Fallback timeout
+        })
       }
 
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove()
+        mapInstanceRef.current = null
       }
 
-      const map = L.map(mapRef.current!, {
+      const map = L.map(mapRef.current, {
         center: [MAP_CENTER.lat, MAP_CENTER.lng],
         zoom: MAP_CENTER.zoom,
         zoomControl: false,
