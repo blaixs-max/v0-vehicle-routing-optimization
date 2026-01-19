@@ -33,8 +33,9 @@ import type { Depot, Vehicle, Customer, OptimizationResult } from "@/lib/types"
 import { OptimizationResults } from "./optimization-results"
 import { saveCustomerCoordinates } from "@/lib/customer-store"
 import { MissingCoordinatesDialog } from "@/components/customers/missing-coordinates-dialog"
-import { useCustomers, useVehicles, useOrders, useDepots } from "@/lib/hooks/use-depot-data"
+import { useCustomers, useVehicles, useOrders, useDepots, useRoutes } from "@/lib/hooks/use-depot-data"
 import { useDepotStore } from "@/lib/depot-store"
+import { saveOptimizedRoutes } from "@/lib/route-store"
 
 export function OptimizationPanel() {
   const selectedDepotId = useDepotStore((state) => state.selectedDepotId)
@@ -44,6 +45,7 @@ export function OptimizationPanel() {
   const { data: vehiclesData, isLoading: vehiclesLoading } = useVehicles()
   const { data: customersData, isLoading: customersLoading, mutate: mutateCustomers } = useCustomers()
   const { data: ordersData, isLoading: ordersLoading } = useOrders()
+  const { mutate: mutateRoutes } = useRoutes()
   
   const [optimizing, setOptimizing] = useState(false)
   const [result, setResult] = useState<OptimizationResult | null>(null)
@@ -192,6 +194,24 @@ export function OptimizationPanel() {
       console.log("[v0] Optimization result received:", result.routes?.length, "routes")
 
       setResult(result)
+      
+      // Save to localStorage so results persist across page changes
+      if (result.routes && result.routes.length > 0) {
+        saveOptimizedRoutes(
+          result.routes,
+          {
+            totalRoutes: result.routes.length,
+            totalDistance: result.totalDistance || 0,
+            totalDuration: result.totalDuration || 0,
+            totalCost: result.totalCost || 0,
+            fuelCost: result.fuelCost,
+            distanceCost: result.distanceCost,
+            fixedCost: result.fixedCost,
+          },
+          algorithm === "ortools" ? "OR-Tools" : "ORS"
+        )
+      }
+      
       setOptimizing(false)
 
       toast({
@@ -250,6 +270,13 @@ export function OptimizationPanel() {
       if (!response.ok) throw new Error("Failed to save routes")
 
       const resultData = await response.json()
+      
+      // Revalidate routes cache so new routes appear immediately
+      mutateRoutes()
+      
+      // Also trigger route-updated event for Map page
+      window.dispatchEvent(new CustomEvent("routes-updated", { detail: result }))
+      
       toast({
         title: "Rotalar Kaydedildi",
         description: `${resultData.count} rota başarıyla kaydedildi`,
