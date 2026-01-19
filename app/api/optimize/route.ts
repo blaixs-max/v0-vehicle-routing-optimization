@@ -393,6 +393,7 @@ async function optimizeWithRailway(
   options: any,
 ): Promise<any> {
   console.log("[v0] Starting Railway optimization with OR-Tools")
+  console.log("[v0] DEBUG optimizeWithRailway: First customer:", JSON.stringify(customers[0], null, 2))
 
   if (!process.env.RAILWAY_API_URL) {
     throw new Error("Railway API URL not configured")
