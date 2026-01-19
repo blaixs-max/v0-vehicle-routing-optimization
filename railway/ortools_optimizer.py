@@ -140,7 +140,18 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
         all_routes.extend(depot_result["routes"])
         vehicle_offset += vehicles_for_depot
     
-    return {"routes": all_routes}
+    # Calculate summary statistics
+    total_distance = sum(route["distance_km"] for route in all_routes)
+    
+    return {
+        "routes": all_routes,
+        "summary": {
+            "total_routes": len(all_routes),
+            "total_distance_km": round(total_distance, 2),
+            "total_vehicles_used": len(all_routes),
+            "algorithm": "OR-Tools"
+        }
+    }
 
 def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: list, vehicles: list, fuel_price: float) -> dict:
     """Single depot optimization (stable fallback)"""
