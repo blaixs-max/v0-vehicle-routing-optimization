@@ -410,3 +410,5 @@ export function FullscreenMap({
     </div>
   )
 }
+
+export default FullscreenMap

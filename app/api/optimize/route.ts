@@ -415,7 +415,11 @@ async function optimizeWithRailway(
     throw new Error("Koordinatları olan müşteri bulunamadı")
   }
 
-  const orderMap = new Map(orders.map((o) => [o.customerId, o]))
+  // Map orders by customer_id (database uses underscore naming)
+  const orderMap = new Map(orders.map((o) => [o.customer_id || o.customerId, o]))
+  
+  console.log("[v0] DEBUG: Order IDs in map:", Array.from(orderMap.keys()))
+  console.log("[v0] DEBUG: Valid customer IDs:", validCustomers.map(c => c.id))
 
   const customersWithOrders = validCustomers.filter((c) => orderMap.has(c.id))
   
@@ -445,8 +449,8 @@ async function optimizeWithRailway(
           lat: c.lat,
           lng: c.lng,
         },
-        demand_pallets: order.pallets,
-        priority: order.priority || 3,
+        demand_pallets: order.demand_pallet || order.pallets || 10,
+        priority: order.priority || 'normal',
         business_type: c.business_type || "retail",
         service_duration: c.service_duration_min || 15,
         time_constraints: c.has_time_constraint

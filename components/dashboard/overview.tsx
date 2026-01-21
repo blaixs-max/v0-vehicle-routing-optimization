@@ -28,12 +28,30 @@ import { useCustomers, useVehicles, useDepots } from "@/lib/hooks/use-depot-data
 
 export function DashboardOverview() {
   const [routeData, setRouteData] = useState<StoredRouteData | null>(null)
+  const [dbRoutes, setDbRoutes] = useState<any[]>([])
   
   const { data: customers } = useCustomers()
   const { data: vehicles } = useVehicles()
   const { data: depots } = useDepots()
 
   useEffect(() => {
+    // Fetch routes from database
+    const fetchDbRoutes = async () => {
+      try {
+        const response = await fetch("/api/routes")
+        if (response.ok) {
+          const routes = await response.json()
+          console.log("[v0] Dashboard loaded routes from database:", routes.length)
+          setDbRoutes(routes)
+        }
+      } catch (error) {
+        console.error("[v0] Failed to load routes from database:", error)
+      }
+    }
+
+    fetchDbRoutes()
+
+    // Also check localStorage for backward compatibility
     try {
       const data = getOptimizedRoutes()
       setRouteData(data)
@@ -43,6 +61,7 @@ export function DashboardOverview() {
 
     const handleRoutesUpdated = (event: CustomEvent) => {
       setRouteData(event.detail)
+      fetchDbRoutes() // Refresh from database
     }
 
     window.addEventListener("routes-updated", handleRoutesUpdated as EventListener)
@@ -53,11 +72,22 @@ export function DashboardOverview() {
   const vehiclesList = vehicles || []
   const depotsList = depots || []
 
+  // Prefer database routes over localStorage
+  const activeRoutes = dbRoutes.length > 0 ? dbRoutes : (routeData?.routes || [])
+  
+  // Calculate stats from database routes
+  const dbStats = dbRoutes.reduce((acc, route) => {
+    acc.totalDistance += parseFloat(route.total_distance || route.distance_km || 0)
+    acc.totalDuration += parseInt(route.total_duration || route.total_duration_min || 0)
+    acc.totalCost += parseFloat(route.total_cost || 0)
+    return acc
+  }, { totalDistance: 0, totalDuration: 0, totalCost: 0 })
+
   const stats = {
-    totalRoutes: routeData?.summary?.totalRoutes || routeData?.routes?.length || 0,
-    totalDistance: routeData?.summary?.totalDistance || 0,
-    totalDuration: routeData?.summary?.totalDuration || 0,
-    totalCost: routeData?.summary?.totalCost || 0,
+    totalRoutes: dbRoutes.length > 0 ? dbRoutes.length : (routeData?.summary?.totalRoutes || routeData?.routes?.length || 0),
+    totalDistance: dbRoutes.length > 0 ? dbStats.totalDistance : (routeData?.summary?.totalDistance || 0),
+    totalDuration: dbRoutes.length > 0 ? dbStats.totalDuration : (routeData?.summary?.totalDuration || 0),
+    totalCost: dbRoutes.length > 0 ? dbStats.totalCost : (routeData?.summary?.totalCost || 0),
     totalDepots: depotsList.length,
     totalVehicles: vehiclesList.length,
     availableVehicles: vehiclesList.filter((v: any) => v.status === "available").length,
@@ -68,14 +98,14 @@ export function DashboardOverview() {
   const optimizedAt = routeData?.optimizedAt ? new Date(routeData.optimizedAt) : null
 
   const routeStatusBreakdown =
-    routeData?.routes?.reduce(
+    activeRoutes.reduce(
       (acc, route) => {
         const status = route.status || "pending"
         acc[status] = (acc[status] || 0) + 1
         return acc
       },
       {} as Record<string, number>,
-    ) || {}
+    )
 
   const completedRoutes = routeStatusBreakdown["completed"] || 0
   const inProgressRoutes = routeStatusBreakdown["in_progress"] || 0

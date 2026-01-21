@@ -6,8 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { BarChart3, TrendingUp, TrendingDown, Truck, MapPin, Fuel, Download, Calendar } from "lucide-react"
+import { useToast } from "@/components/ui/toast-provider"
 
 export default function ReportsPage() {
+  const { showToast } = useToast()
   const [dateRange, setDateRange] = useState("week")
   const [stats, setStats] = useState({
     totalRoutes: 0,
@@ -25,16 +27,34 @@ export default function ReportsPage() {
   }, [dateRange])
 
   const fetchStats = async () => {
-    setStats({
-      totalRoutes: 47,
-      totalDistance: 3250,
-      totalCost: 45800,
-      totalFuelCost: 18200,
-      avgCostPerKm: 14.09,
-      avgStopsPerRoute: 8.3,
-      vehicleUtilization: 78.5,
-      costSavings: 12.3,
-    })
+    try {
+      const response = await fetch(`/api/reports/stats?dateRange=${dateRange}`)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || "Failed to fetch stats")
+      }
+      const data = await response.json()
+      console.log("[v0] Reports stats loaded:", data)
+      setStats(data)
+    } catch (error) {
+      console.error("[v0] Failed to fetch reports stats:", error)
+      showToast(
+        "error",
+        "Rapor verileri yüklenemedi",
+        error instanceof Error ? error.message : "Bir hata oluştu"
+      )
+      // Fallback to zeros if error
+      setStats({
+        totalRoutes: 0,
+        totalDistance: 0,
+        totalCost: 0,
+        totalFuelCost: 0,
+        avgCostPerKm: 0,
+        avgStopsPerRoute: 0,
+        vehicleUtilization: 0,
+        costSavings: 0,
+      })
+    }
   }
 
   return (

@@ -12,6 +12,7 @@ import { Slider } from "@/components/ui/slider"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "@/components/ui/use-toast"
+import { useToast as useNewToast } from "@/components/ui/toast-provider"
 import {
   Route,
   Truck,
@@ -46,6 +47,7 @@ export function OptimizationPanel() {
   const { data: customersData, isLoading: customersLoading, mutate: mutateCustomers } = useCustomers()
   const { data: ordersData, isLoading: ordersLoading } = useOrders()
   const { mutate: mutateRoutes } = useRoutes()
+  const { showToast } = useNewToast()
   
   const [optimizing, setOptimizing] = useState(false)
   const [result, setResult] = useState<OptimizationResult | null>(null)
@@ -57,6 +59,7 @@ export function OptimizationPanel() {
   const [showMissingCoordinatesDialog, setShowMissingCoordinatesDialog] = useState(false)
 
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([])
+  const [activeOrderCustomerIds, setActiveOrderCustomerIds] = useState<string[]>([])
 
   // Parameters
   const [fuelPrice, setFuelPrice] = useState(47.5)
@@ -65,25 +68,19 @@ export function OptimizationPanel() {
   const [useRealDistances, setUseRealDistances] = useState(true)
   const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ortools")
 
-  const loading = depotsLoading || vehiclesLoading || customersLoading || ordersLoading
+  const loading = depotsLoading || vehiclesLoading || customersLoading
   const depots = depotsData || []
   const vehicles = vehiclesData || []
   const customers = customersData || []
-  const orders = (ordersData || []).map((o: any) => ({
-    customerId: o.customer_id,
-    customerName: o.customer_name,
-    pallets: o.pallets,
-  }))
+  const orders = ordersData || [] // Declare orders variable
 
   const selectedDepot = depots.find((d: Depot) => d.id === selectedDepotId)
   const selectedDepots = selectedDepot ? [selectedDepot.id] : []
   
   const availableVehicles = vehicles.filter((v: Vehicle) => v.depot_id === selectedDepotId)
   const totalCapacity = availableVehicles.reduce((sum, v) => sum + (v.capacity_pallets || 0), 0)
-  const totalDemand = orders.reduce((sum, o) => sum + o.pallets, 0)
-  const missingCoords = customers
-    .filter((c: Customer) => orders.some((o) => o.customerId === c.id))
-    .filter((c: Customer) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
+  const totalDemand = orders.reduce((sum, o) => sum + (o.quantity || 0), 0) // Declare totalDemand variable
+  const missingCoords = customers.filter((c: Customer) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
 
   useEffect(() => {
     fetchFuelPrice()
@@ -119,7 +116,29 @@ export function OptimizationPanel() {
       return
     }
 
-    const customersToOptimize = selectedCustomers.length > 0 ? selectedCustomers : customers.map((c) => c.id)
+    // Fetch ONLY pending orders (not assigned to any route yet)
+    let pendingOrderCustomerIds: string[] = []
+    try {
+      const ordersResponse = await fetch("/api/orders?status=pending")
+      if (ordersResponse.ok) {
+        const orders = await ordersResponse.json()
+        pendingOrderCustomerIds = orders.map((o: any) => o.customer_id).filter(Boolean)
+        console.log("[v0] Pending orders found:", pendingOrderCustomerIds.length)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch orders for filtering:", error)
+    }
+
+    // Filter customers: use selected customers OR customers with pending orders
+    let customersToOptimize = selectedCustomers.length > 0 
+      ? selectedCustomers 
+      : customers.map((c) => c.id)
+    
+    // If we have pending orders, filter to only those customers
+    if (pendingOrderCustomerIds.length > 0) {
+      customersToOptimize = customersToOptimize.filter(cId => pendingOrderCustomerIds.includes(cId))
+      console.log("[v0] Filtered to customers with pending orders:", customersToOptimize.length)
+    }
 
     console.log("[v0] Customers to optimize:", customersToOptimize.length)
 
@@ -192,6 +211,20 @@ export function OptimizationPanel() {
 
       const result = await response.json()
       console.log("[v0] Optimization result received:", result.routes?.length, "routes")
+
+      // Enrich routes with vehicle plate information
+      if (result.routes && result.routes.length > 0) {
+        result.routes = result.routes.map((route: any) => {
+          const vehicle = vehiclesData.find((v) => v.id === route.vehicleId)
+          const depot = depotsData.find((d) => d.id === route.depotId)
+          return {
+            ...route,
+            vehiclePlate: vehicle?.plate || route.vehiclePlate,
+            depotName: depot?.name || route.depotName,
+          }
+        })
+        console.log("[v0] Routes enriched with vehicle plates:", result.routes[0]?.vehiclePlate)
+      }
 
       setResult(result)
       
@@ -284,17 +317,19 @@ export function OptimizationPanel() {
       // Also trigger route-updated event for Map page
       window.dispatchEvent(new CustomEvent("routes-updated", { detail: result }))
       
-      toast({
-        title: "Rotalar Kaydedildi",
-        description: `${resultData.count} rota başarıyla kaydedildi`,
-      })
+      showToast(
+        "success",
+        "Rotalar Başarıyla Kaydedildi",
+        `${resultData.count || result.routes.length} rota veritabanına kaydedildi`
+      )
     } catch (error) {
       console.error("[v0] Save routes error:", error)
-      toast({
-        title: "Hata",
-        description: "Rotalar kaydedilemedi",
-        variant: "destructive",
-      })
+      const errorMessage = error instanceof Error ? error.message : "Bilinmeyen hata oluştu"
+      showToast(
+        "error",
+        "Rotalar Kaydedilemedi",
+        `Kayıt sırasında hata oluştu: ${errorMessage}`
+      )
     } finally {
       setIsSavingRoutes(false)
     }

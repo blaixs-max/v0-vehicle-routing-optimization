@@ -202,7 +202,7 @@ export async function POST(request: Request) {
           ${route.vehicleId},
           ${route.depotId},
           ${route.routeDate || new Date().toISOString().split("T")[0]},
-          'planned',
+          'pending',
           ${route.totalDistance},
           ${route.totalDuration},
           ${route.totalPallets},
@@ -223,12 +223,21 @@ export async function POST(request: Request) {
         const stopLat = stop.lat || stop.location?.lat || null
         const stopLng = stop.lng || stop.location?.lng || null
         
+        // Find pending order for this customer
+        const [customerOrder] = await sql`
+          SELECT id FROM orders 
+          WHERE customer_id = ${stop.customerId} 
+          AND status IN ('pending', 'approved')
+          ORDER BY order_date DESC
+          LIMIT 1
+        `
+        
         await sql`
           INSERT INTO route_stops (
             route_id, customer_id, stop_order,
             distance_from_prev_km, duration_from_prev_min,
             cumulative_distance_km, cumulative_load_pallets,
-            arrival_time, lat, lng, status
+            arrival_time, lat, lng, status, order_id
           ) VALUES (
             ${savedRoute.id},
             ${stop.customerId},
@@ -240,9 +249,15 @@ export async function POST(request: Request) {
             ${stop.arrivalTime || null},
             ${stopLat},
             ${stopLng},
-            'pending'
+            'pending',
+            ${customerOrder?.id || null}
           )
         `
+        
+        // Update order with route_id (if order found)
+        if (customerOrder) {
+          await sql`UPDATE orders SET route_id = ${savedRoute.id} WHERE id = ${customerOrder.id}`
+        }
       }
     }
 
@@ -298,7 +313,7 @@ export async function PATCH(request: Request) {
     }
 
     // Validate status
-    const validStatuses = ['planned', 'in_progress', 'completed', 'cancelled']
+    const validStatuses = ['pending', 'approved', 'in_progress', 'completed', 'cancelled']
     if (!validStatuses.includes(status)) {
       return NextResponse.json({ error: "Invalid status value" }, { status: 400 })
     }

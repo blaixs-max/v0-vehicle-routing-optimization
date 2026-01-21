@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { useToast } from "@/components/ui/toast-provider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -28,8 +29,10 @@ import { OSRM_CONFIG, VROOM_CONFIG, VEHICLE_TYPES } from "@/lib/constants"
 import { useDepotStore, DEPOTS } from "@/lib/depot-store"
 
 export default function SettingsPage() {
+  const { showToast } = useToast()
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saved, setSaved] = useState(false) // Declare the saved variable
   const { selectedDepotId, setSelectedDepot } = useDepotStore()
   const selectedDepot = DEPOTS.find((d) => d.id === selectedDepotId)
 
@@ -41,9 +44,9 @@ export default function SettingsPage() {
     currency: "TRY",
     distanceUnit: "km",
     fuelPrice: 47.5,
-    maxRouteDistance: 0, // Sınırsız
-    maxRouteDuration: 0, // Sadece sürücü 9 saat kuralı
-    serviceTimePerStop: 30, // Varsayılan (business'a göre değişir)
+    maxRouteDistance: 0,
+    maxRouteDuration: 0,
+    serviceTimePerStop: 30,
     capacityUtilization: 90,
   })
 
@@ -63,13 +66,77 @@ export default function SettingsPage() {
     dailyReports: false,
   })
 
+  // Fetch settings on mount
+  useEffect(() => {
+    fetchSettings()
+  }, [])
+
+  const fetchSettings = async () => {
+    try {
+      const response = await fetch("/api/settings")
+      if (!response.ok) throw new Error("Failed to fetch settings")
+      
+      const data = await response.json()
+      console.log("[v0] Settings loaded:", data)
+      
+      setSettings({
+        ...settings,
+        fuelPrice: data.fuel_price_per_liter || 47.5,
+        maxRouteDistance: data.max_distance_per_route_km || 0,
+        maxRouteDuration: data.max_route_duration_hours || 0,
+        serviceTimePerStop: data.service_time_per_stop_minutes || 30,
+      })
+      
+      setIntegrations({
+        osrmUrl: data.osrm_api_url || OSRM_CONFIG.baseUrl,
+        vroomUrl: data.vroom_api_url || VROOM_CONFIG.baseUrl,
+        supabaseConnected: false,
+        n8nWebhookUrl: data.n8n_webhook_url || "",
+      })
+      
+      setLoading(false)
+    } catch (error) {
+      console.error("[v0] Failed to load settings:", error)
+      showToast("error", "Ayarlar yüklenemedi", "Varsayılan değerler kullanılacak")
+      setLoading(false)
+    }
+  }
+
   const handleSave = async () => {
     setSaving(true)
-    // Simulate save
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fuel_price_per_liter: settings.fuelPrice,
+          driver_cost_per_hour: 150.0,
+          vehicle_fixed_cost: 500.0,
+          max_route_duration_hours: settings.maxRouteDuration,
+          max_distance_per_route_km: settings.maxRouteDistance,
+          service_time_per_stop_minutes: settings.serviceTimePerStop,
+          routing_engine: 'ors',
+          ors_api_url: 'https://api.openrouteservice.org',
+          osrm_api_url: integrations.osrmUrl,
+          vroom_api_url: integrations.vroomUrl,
+          n8n_webhook_url: integrations.n8nWebhookUrl,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to save settings")
+      }
+
+      console.log("[v0] Settings saved successfully")
+      showToast("success", "Ayarlar Kaydedildi", "Değişiklikler başarıyla kaydedildi")
+      setSaved(true) // Set saved to true after successful save
+    } catch (error) {
+      console.error("[v0] Failed to save settings:", error)
+      showToast("error", "Kayıt Hatası", error instanceof Error ? error.message : "Ayarlar kaydedilemedi")
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

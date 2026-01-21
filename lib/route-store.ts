@@ -117,6 +117,27 @@ export function approveSelectedRoutes(routeIds: string[]): void {
   window.dispatchEvent(new CustomEvent("routes-updated", { detail: updatedData }))
 }
 
+export function deleteRoute(routeId: string): void {
+  if (typeof window === "undefined") return
+
+  const stored = getOptimizedRoutes()
+  if (!stored) return
+
+  const updatedRoutes = stored.routes.filter((route) => route.id !== routeId)
+
+  const updatedData: StoredRouteData = {
+    ...stored,
+    routes: updatedRoutes,
+    summary: {
+      ...stored.summary,
+      totalRoutes: updatedRoutes.length,
+    },
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedData))
+  window.dispatchEvent(new CustomEvent("routes-updated", { detail: updatedData }))
+}
+
 export function clearOptimizedRoutes(): void {
   if (typeof window !== "undefined") {
     localStorage.removeItem(STORAGE_KEY)
