@@ -94,27 +94,33 @@ export default function MapPage() {
       const formattedRoutes = savedRoutesData.map((r: any) => {
         // Database uses total_distance_km, total_duration_min fields
         const distanceKm = parseFloat(r.total_distance_km) || parseFloat(r.distance_km) || 0
-        const durationMin = parseInt(r.total_duration_min) || parseInt(r.total_duration) || 0
+        const drivingDurationMin = parseInt(r.total_duration_min) || parseInt(r.total_duration) || 0
+        const stops = r.stops || []
+        // Calculate service duration from each stop's individual service time
+        const serviceDurationMin = stops.reduce((sum, stop: any) => sum + (stop.serviceDuration || 45), 0)
+        const durationMin = drivingDurationMin + serviceDurationMin
         const totalCost = parseFloat(r.total_cost) || 0
         const fuelCost = parseFloat(r.fuel_cost) || 0
         
         // Map stops and add depot return as final stop
-        const stops = (r.stops || []).map((s: any, idx: number) => ({
+        const mappedStops = stops.map((s: any, idx: number) => ({
           customerId: s.customer_id,
           customerName: s.customer_name,
+          orderId: s.order_id, // Order ID for status updates
           location: { lat: parseFloat(s.lat) || 0, lng: parseFloat(s.lng) || 0 },
-          demand: s.cumulative_load_pallets || 0,
+          demand: Number(s.demand) || 0, // Individual demand from orders table
           stopOrder: s.stop_order || idx + 1,
           cumulativeLoad: s.cumulative_load_pallets || 0,
           distanceFromPrev: parseFloat(s.distance_from_prev_km) || 0,
           durationFromPrev: parseInt(s.duration_from_prev_min) || 0,
           arrivalTime: s.arrival_time,
+          serviceDuration: Number(s.service_duration_minutes) || 45,
         }))
         
         // Add depot return as final stop with calculated distance
         const depot = depotsData?.find((d: any) => d.id === r.depot_id)
-        if (depot && stops.length > 0) {
-          const lastStop = stops[stops.length - 1]
+        if (depot && mappedStops.length > 0) {
+          const lastStop = mappedStops[mappedStops.length - 1]
           
           // Calculate distance from last stop to depot using Haversine formula
           const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -136,12 +142,12 @@ export default function MapPage() {
             parseFloat(depot.lng)
           )
           
-          stops.push({
+          mappedStops.push({
             customerId: `depot-${r.depot_id}`,
             customerName: `${r.depot_name || depot.name} (Dönüş)`,
             location: { lat: parseFloat(depot.lat), lng: parseFloat(depot.lng) },
             demand: 0,
-            stopOrder: stops.length + 1,
+            stopOrder: mappedStops.length + 1,
             cumulativeLoad: 0,
             distanceFromPrev: returnDistance,
             durationFromPrev: Math.round(returnDistance * 1.5), // Approximate: ~1.5 min per km
@@ -156,7 +162,7 @@ export default function MapPage() {
           vehicle_type: r.vehicle_type || 1,
           depot_id: r.depot_id,
           depot_name: r.depot_name || "Unknown Depot",
-          stops: stops,
+          stops: mappedStops,
           distance_km: distanceKm,
           total_distance: distanceKm,
           total_duration: durationMin,
@@ -253,20 +259,27 @@ export default function MapPage() {
       const route = routes.find((r) => r.id === routeId)
       if (!route || !route.stops) return
 
-      // Extract order IDs from stops (assuming customer_id maps to order)
-      const customerIds = route.stops.map((stop: any) => stop.customerId).filter(Boolean)
+      // Extract order IDs from stops
+      const orderIds = route.stops.map((stop: any) => stop.orderId).filter(Boolean)
 
-      if (customerIds.length === 0) return
+      if (orderIds.length === 0) {
+        console.log("[v0] No order IDs found in route stops:", routeId)
+        return
+      }
 
-      // Update all orders for these customers
+      console.log("[v0] Updating orders:", orderIds, "to status:", orderStatus)
+
+      // Update all orders for this route
       const response = await fetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: customerIds, status: orderStatus }),
+        body: JSON.stringify({ ids: orderIds, status: orderStatus }),
       })
 
       if (response.ok) {
         console.log("[v0] Orders status updated for route:", routeId)
+      } else {
+        console.error("[v0] Order status update failed:", await response.text())
       }
     } catch (error) {
       console.error("[v0] Failed to update orders status:", error)

@@ -26,6 +26,7 @@ import {
   Landmark,
   DollarSign,
   CircleDollarSign,
+  Package, // Declared the Package variable here
 } from "lucide-react"
 import { DEPOT_COLORS, ROUTE_COLORS } from "@/lib/constants"
 
@@ -414,7 +415,10 @@ function RouteCard({ route, index, expanded, onToggle, depots }: RouteCardProps)
   const routeColor = ROUTE_COLORS?.[index % ROUTE_COLORS.length] || "#3B82F6"
 
   const totalDistance = route.totalDistance ?? route.distance ?? 0
-  const totalDuration = route.totalDuration ?? route.duration ?? 0
+  const drivingDuration = route.totalDuration ?? route.duration ?? 0
+  const stopCount = route.stops?.length || 0
+  const serviceDuration = stopCount * 45 // 45 minutes per stop for unloading
+  const totalDuration = drivingDuration + serviceDuration
   const totalLoad = route.totalLoad ?? route.load ?? 0
   const fuelCost = route.fuelCost ?? 0
   const distanceCost = route.distanceCost ?? 0
@@ -452,10 +456,22 @@ function RouteCard({ route, index, expanded, onToggle, depots }: RouteCardProps)
                 <div className="text-xs text-muted-foreground mt-0.5 font-mono">ID: {route.id}</div>
               )}
               <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                <span>{route.stops?.length || 0} durak</span>
-                <span>{totalDistance.toFixed(1)} km</span>
-                <span>{Math.round(totalDuration)} dk</span>
-                <span>{totalLoad} palet</span>
+                <span className="flex items-center gap-1">
+                  <Route className="w-3 h-3" />
+                  {totalDistance.toFixed(1)} km
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {Math.round(totalDuration)} dk
+                </span>
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3 h-3" />
+                  {route.stops?.length || 0} durak
+                </span>
+                <span className="flex items-center gap-1 font-medium text-primary">
+                  <Package className="w-3 h-3" />
+                  {totalLoad} palet
+                </span>
               </div>
             </div>
           </div>

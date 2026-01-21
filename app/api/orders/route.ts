@@ -177,11 +177,13 @@ export async function PATCH(request: Request) {
     }
 
     if (Array.isArray(ids)) {
-      // Bulk update
-      const placeholders = ids.map((_, i) => `$${i + 2}`).join(", ")
-      const query = `UPDATE orders SET status = $1, updated_at = NOW() WHERE id IN (${placeholders}) RETURNING id`
-      const params = [status, ...ids]
-      const result = await sql(query, params)
+      // Bulk update using ANY() for array matching
+      const result = await sql`
+        UPDATE orders 
+        SET status = ${status}, updated_at = NOW()
+        WHERE id = ANY(${ids})
+        RETURNING id
+      `
       console.log("[v0] Orders status updated (bulk):", result.length, "orders to", status)
       return NextResponse.json({ message: "Orders updated", count: result.length })
     } else {

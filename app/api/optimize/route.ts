@@ -429,6 +429,8 @@ async function optimizeWithRailway(
     throw new Error("Bekleyen siparişi olan müşteri bulunamadı")
   }
 
+  const serviceDurationMinutes = 45 // Default fallback
+
   const railwayRequest = {
     depots: depots.map((d) => ({
       id: d.id,
@@ -452,7 +454,7 @@ async function optimizeWithRailway(
         demand_pallets: order.demand_pallet || order.pallets || 10,
         priority: order.priority || 'normal',
         business_type: c.business_type || "retail",
-        service_duration: c.service_duration_min || 15,
+        service_duration: c.service_duration_minutes || serviceDurationMinutes,
         time_constraints: c.has_time_constraint
           ? {
               start: c.constraint_start_time,
@@ -567,37 +569,37 @@ async function optimizeWithRailway(
         vehicleType: route.vehicle_type || "Kamyon",
         depotId: route.depot_id,
         depotName: route.depot_name || depotMap.get(route.depot_id)?.name || "Depo",
-      totalDistance: route.distance_km || route.total_distance_km || 0,
-      distance: route.distance_km || route.total_distance_km || 0,
-      totalDuration: route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0,
-      duration: route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0,
-      totalCost: route.total_cost || 0,
-      totalLoad: route.total_pallets || route.total_load || 0,
-      load: route.total_pallets || route.total_load || 0,
-      totalPallets: route.total_pallets || route.total_load || 0,
-      fuelCost: route.fuel_cost || 0,
-      distanceCost: route.distance_cost || 0,
-      fixedCost: route.fixed_cost || 0,
-      tollCost: route.toll_cost || 0,
-      stops: (route.stops || []).map((stop: any, stopIndex: number) => ({
-        stopOrder: stopIndex + 1,
-        customerId: stop.customer_id,
-        customerName: stop.customer_name || customerMap.get(stop.customer_id)?.name || `Customer ${stopIndex + 1}`,
-        address: stop.address || customerMap.get(stop.customer_id)?.address || "",
-        lat: stop.location?.lat || stop.lat || 0,
-        lng: stop.location?.lng || stop.lng || 0,
-        latitude: stop.location?.lat || stop.lat || 0,
-        longitude: stop.location?.lng || stop.lng || 0,
-        demand: stop.demand || stop.pallets || 0,
-        distanceFromPrev: stop.distanceFromPrev || stop.distance_from_prev_km || 0,
-        durationFromPrev: stop.durationFromPrev || stop.duration_from_prev_min || 0,
-        cumulativeDistance: stop.cumulativeDistance || stop.cumulative_distance_km || 0,
-        cumulativeLoad: stop.cumulativeLoad || stop.cumulative_load || 0,
-        arrivalTime: stop.arrival_time || null,
-      })),
-      geometry: route.geometry || [],
-    }
-  })
+        totalDistance: route.distance_km || route.total_distance_km || 0,
+        distance: route.distance_km || route.total_distance_km || 0,
+        totalDuration: route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0,
+        duration: route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0,
+        totalCost: route.total_cost || 0,
+        totalLoad: route.total_pallets || route.total_load || 0,
+        load: route.total_pallets || route.total_load || 0,
+        totalPallets: route.total_pallets || route.total_load || 0,
+        fuelCost: route.fuel_cost || 0,
+        distanceCost: route.distance_cost || 0,
+        fixedCost: route.fixed_cost || 0,
+        tollCost: route.toll_cost || 0,
+        stops: (route.stops || []).map((stop: any, stopIndex: number) => ({
+          stopOrder: stopIndex + 1,
+          customerId: stop.customer_id,
+          customerName: stop.customer_name || customerMap.get(stop.customer_id)?.name || `Customer ${stopIndex + 1}`,
+          address: stop.address || customerMap.get(stop.customer_id)?.address || "",
+          lat: stop.location?.lat || stop.lat || 0,
+          lng: stop.location?.lng || stop.lng || 0,
+          latitude: stop.location?.lat || stop.lat || 0,
+          longitude: stop.location?.lng || stop.lng || 0,
+          demand: stop.demand || stop.pallets || 0,
+          distanceFromPrev: stop.distanceFromPrev || stop.distance_from_prev_km || 0,
+          durationFromPrev: stop.durationFromPrev || stop.duration_from_prev_min || 0,
+          cumulativeDistance: stop.cumulativeDistance || stop.cumulative_distance_km || 0,
+          cumulativeLoad: stop.cumulativeLoad || stop.cumulative_load || 0,
+          arrivalTime: stop.arrival_time || null,
+        })),
+        geometry: route.geometry || [],
+      }
+    })
 
     const summary = {
       totalDistance: formattedRoutes.reduce((sum, r) => sum + (r.totalDistance || 0), 0),
@@ -676,6 +678,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     console.log("[v0] POST /api/optimize called")
     console.log("[v0] DEBUG: Request body first customer:", JSON.stringify(body.customers?.[0], null, 2))
+
+    // Fetch service duration from settings
+    let serviceDurationMinutes = 45 // Default fallback
+    try {
+      const settingsResponse = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/settings`)
+      if (settingsResponse.ok) {
+        const settingsData = await settingsResponse.json()
+        serviceDurationMinutes = settingsData.service_duration_minutes || 45
+        console.log("[v0] Service duration loaded from settings:", serviceDurationMinutes, "minutes")
+      }
+    } catch (error) {
+      console.log("[v0] Failed to fetch settings, using default service duration:", serviceDurationMinutes)
+    }
 
     const {
       depots: requestDepots, // Renamed to avoid confusion

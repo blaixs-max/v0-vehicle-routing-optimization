@@ -182,6 +182,20 @@ export function CustomerFormDialog({ open, onOpenChange, customer, depots = [], 
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="service_duration_minutes">Boşaltma Süresi (dakika)</Label>
+            <Input
+              id="service_duration_minutes"
+              type="number"
+              min="5"
+              max="240"
+              value={form.service_duration_min}
+              onChange={(e) => setForm({ ...form, service_duration_min: Number(e.target.value) })}
+              placeholder="45"
+            />
+            <p className="text-xs text-muted-foreground">Bu müşteride malzeme boşaltma için gereken ortalama süre</p>
+          </div>
+
           <div className="space-y-4 border-t pt-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">

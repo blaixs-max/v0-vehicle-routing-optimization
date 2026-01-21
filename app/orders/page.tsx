@@ -72,7 +72,7 @@ export default function OrdersPage() {
     customer_city: o.city,
     customer_district: o.district,
     customer_address: `${o.district || ""} ${o.city || ""}`.trim(),
-    pallets: o.pallets,
+    pallets: Number(o.demand_pallet) || Number(o.pallets) || 0,
     priority: 3,
     order_date: o.order_date,
     delivery_date: o.delivery_date,

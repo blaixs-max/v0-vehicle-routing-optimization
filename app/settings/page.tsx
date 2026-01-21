@@ -84,7 +84,7 @@ export default function SettingsPage() {
         fuelPrice: data.fuel_price_per_liter || 47.5,
         maxRouteDistance: data.max_distance_per_route_km || 0,
         maxRouteDuration: data.max_route_duration_hours || 0,
-        serviceTimePerStop: data.service_time_per_stop_minutes || 30,
+        serviceTimePerStop: data.service_duration_minutes || 45,
       })
       
       setIntegrations({
@@ -114,7 +114,7 @@ export default function SettingsPage() {
           vehicle_fixed_cost: 500.0,
           max_route_duration_hours: settings.maxRouteDuration,
           max_distance_per_route_km: settings.maxRouteDistance,
-          service_time_per_stop_minutes: settings.serviceTimePerStop,
+          service_duration_minutes: settings.serviceTimePerStop,
           routing_engine: 'ors',
           ors_api_url: 'https://api.openrouteservice.org',
           osrm_api_url: integrations.osrmUrl,

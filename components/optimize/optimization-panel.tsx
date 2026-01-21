@@ -60,6 +60,7 @@ export function OptimizationPanel() {
 
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([])
   const [activeOrderCustomerIds, setActiveOrderCustomerIds] = useState<string[]>([])
+  const [pendingOrders, setPendingOrders] = useState<any[]>([])
 
   // Parameters
   const [fuelPrice, setFuelPrice] = useState(47.5)
@@ -79,12 +80,27 @@ export function OptimizationPanel() {
   
   const availableVehicles = vehicles.filter((v: Vehicle) => v.depot_id === selectedDepotId)
   const totalCapacity = availableVehicles.reduce((sum, v) => sum + (v.capacity_pallets || 0), 0)
-  const totalDemand = orders.reduce((sum, o) => sum + (o.quantity || 0), 0) // Declare totalDemand variable
+  const totalDemand = pendingOrders.reduce((sum, o) => sum + (Number(o.demand_pallet) || 0), 0)
   const missingCoords = customers.filter((c: Customer) => !c.lat || !c.lng || c.lat === 0 || c.lng === 0)
 
   useEffect(() => {
     fetchFuelPrice()
-  }, [])
+    fetchPendingOrders()
+  }, [selectedDepotId])
+  
+  async function fetchPendingOrders() {
+    try {
+      const depotFilter = selectedDepotId ? `&depot_id=${selectedDepotId}` : ''
+      const response = await fetch(`/api/orders?status=pending${depotFilter}`)
+      if (response.ok) {
+        const orders = await response.json()
+        setPendingOrders(orders)
+        console.log("[v0] Pending orders loaded:", orders.length, "Total demand:", orders.reduce((sum: number, o: any) => sum + (Number(o.demand_pallet) || 0), 0))
+      }
+    } catch (error) {
+      console.error("[v0] Failed to fetch pending orders:", error)
+    }
+  }
 
   async function fetchFuelPrice() {
     try {

@@ -7,13 +7,13 @@ export async function GET() {
   try {
     const [settings] = await sql`
       SELECT * FROM settings 
-      WHERE id = 'default'
+      WHERE id = 1
     `
 
     if (!settings) {
       // Return default settings if none exist
       return NextResponse.json({
-        id: 'default',
+        id: 1,
         fuel_price_per_liter: 35.0,
         driver_cost_per_hour: 150.0,
         vehicle_fixed_cost: 500.0,
@@ -48,17 +48,17 @@ export async function PUT(request: Request) {
     const [settings] = await sql`
       INSERT INTO settings (
         id, fuel_price_per_liter, driver_cost_per_hour, vehicle_fixed_cost,
-        max_route_duration_hours, max_distance_per_route_km, service_time_per_stop_minutes,
+        max_route_duration_hours, max_distance_per_route_km, service_duration_minutes,
         routing_engine, ors_api_url, osrm_api_url, vroom_api_url, n8n_webhook_url,
         updated_at
       ) VALUES (
-        'default',
+        1,
         ${body.fuel_price_per_liter || 35.0},
         ${body.driver_cost_per_hour || 150.0},
         ${body.vehicle_fixed_cost || 500.0},
         ${body.max_route_duration_hours || 8.0},
         ${body.max_distance_per_route_km || 300.0},
-        ${body.service_time_per_stop_minutes || 15},
+        ${body.service_duration_minutes || 45},
         ${body.routing_engine || 'ors'},
         ${body.ors_api_url || 'https://api.openrouteservice.org'},
         ${body.osrm_api_url || ''},
@@ -73,7 +73,7 @@ export async function PUT(request: Request) {
         vehicle_fixed_cost = EXCLUDED.vehicle_fixed_cost,
         max_route_duration_hours = EXCLUDED.max_route_duration_hours,
         max_distance_per_route_km = EXCLUDED.max_distance_per_route_km,
-        service_time_per_stop_minutes = EXCLUDED.service_time_per_stop_minutes,
+        service_duration_minutes = EXCLUDED.service_duration_minutes,
         routing_engine = EXCLUDED.routing_engine,
         ors_api_url = EXCLUDED.ors_api_url,
         osrm_api_url = EXCLUDED.osrm_api_url,

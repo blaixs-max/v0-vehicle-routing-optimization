@@ -53,9 +53,12 @@ export async function GET(request: NextRequest) {
             c.lat,
             c.lng,
             c.city,
-            c.district
+            c.district,
+            c.service_duration_minutes,
+            o.demand_pallet as demand
           FROM route_stops rs
           LEFT JOIN customers c ON rs.customer_id = c.id
+          LEFT JOIN orders o ON rs.order_id = o.id
           WHERE rs.route_id = ANY(${routeIds})
           ORDER BY rs.route_id, rs.stop_order ASC
         `
@@ -216,8 +219,22 @@ export async function POST(request: Request) {
           ${geometry},
           NOW()
         )
+        ON CONFLICT (id) DO UPDATE SET
+          total_distance_km = EXCLUDED.total_distance_km,
+          total_duration_min = EXCLUDED.total_duration_min,
+          total_pallets = EXCLUDED.total_pallets,
+          total_cost = EXCLUDED.total_cost,
+          fuel_cost = EXCLUDED.fuel_cost,
+          distance_cost = EXCLUDED.distance_cost,
+          fixed_cost = EXCLUDED.fixed_cost,
+          toll_cost = EXCLUDED.toll_cost,
+          geometry = EXCLUDED.geometry,
+          optimized_at = NOW()
         RETURNING id
       `
+
+      // Delete existing stops for this route (in case of re-save)
+      await sql`DELETE FROM route_stops WHERE route_id = ${route.id}`
 
       for (const stop of route.stops) {
         const stopLat = stop.lat || stop.location?.lat || null
