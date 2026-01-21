@@ -64,19 +64,51 @@ export function OptimizationResults({ result, depots = [] }: OptimizationResults
     setExpandedRoutes(newExpanded)
   }
 
-  const exportJSON = () => {
-    const data = JSON.stringify(result, null, 2)
-    const blob = new Blob([data], { type: "application/json" })
+  const downloadReport = () => {
+    // Create CSV report with route details
+    const routes = result.routes || []
+    const date = new Date().toISOString().split("T")[0]
+    
+    // CSV Header
+    let csv = "Rota Özeti Raporu\n"
+    csv += `Tarih: ${date}\n`
+    csv += `Toplam Rota: ${routes.length}\n`
+    csv += `Toplam Mesafe: ${summary.totalDistance.toFixed(1)} km\n`
+    csv += `Toplam Süre: ${Math.round(summary.totalDuration / 60)} saat\n`
+    csv += `Toplam Maliyet: ${summary.totalCost.toLocaleString("tr-TR")} TL\n\n`
+    
+    // Route details table
+    csv += "Rota ID,Araç,Depo,Mesafe (km),Süre (dk),Durak Sayısı,Palet,Maliyet (TL)\n"
+    
+    routes.forEach((route: any) => {
+      csv += `${route.id},${route.vehiclePlate || route.vehicleId},${route.depotName || route.depotId},${route.totalDistance?.toFixed(1) || 0},${route.totalDuration || 0},${route.stops?.length || 0},${route.totalLoad || 0},${route.totalCost?.toFixed(2) || 0}\n`
+    })
+    
+    // Download CSV
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `optimization-${new Date().toISOString().split("T")[0]}.json`
+    a.download = `rota-raporu-${date}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const saveRoutes = async () => {
-    // Save logic here
+  const exportJSON = () => {
+    // Implement JSON export functionality here
+    const json = JSON.stringify(result, null, 2)
+    const blob = new Blob([json], { type: "application/json;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `rota-raporu-${new Date().toISOString().split("T")[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const saveRoutes = () => {
+    // Implement save routes functionality here
+    console.log("Routes saved:", result.routes)
   }
 
   useEffect(() => {
@@ -349,16 +381,10 @@ export function OptimizationResults({ result, depots = [] }: OptimizationResults
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-medium">Rotalar ({result.routes?.length || 0})</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={exportJSON}>
-                <Download className="h-4 w-4 mr-1" />
-                JSON
-              </Button>
-              <Button size="sm" onClick={saveRoutes} disabled={false}>
-                <Save className="h-4 w-4 mr-1" />
-                Kaydet
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" onClick={downloadReport}>
+              <Download className="h-4 w-4 mr-1" />
+              Rapor İndir
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { RoutesMap } from "@/components/routes/routes-map"
 import { RouteDetails } from "@/components/routes/route-details"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -42,8 +41,8 @@ export default function RoutesPage() {
   const [selectedDepot, setSelectedDepot] = useState<string>("all")
   const [selectedRoute, setSelectedRoute] = useState<RouteData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<"map" | "list">("list")
   const [lastOptimization, setLastOptimization] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<string>("map") // Declare viewMode and setViewMode
 
   useEffect(() => {
     fetchData()
@@ -127,24 +126,6 @@ export default function RoutesPage() {
                 ))}
               </SelectContent>
             </Select>
-            <div className="flex rounded-lg border border-slate-200 bg-white">
-              <Button
-                variant={viewMode === "map" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("map")}
-                className={viewMode === "map" ? "bg-emerald-600 hover:bg-emerald-700" : ""}
-              >
-                Harita
-              </Button>
-              <Button
-                variant={viewMode === "list" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setViewMode("list")}
-                className={viewMode === "list" ? "bg-emerald-600 hover:bg-emerald-700" : ""}
-              >
-                Liste
-              </Button>
-            </div>
             <Button variant="outline" size="icon" onClick={fetchData} className="bg-white shrink-0">
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             </Button>
@@ -222,95 +203,82 @@ export default function RoutesPage() {
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row flex-1 min-h-[500px]">
-            {viewMode === "map" ? (
-              <>
-                <div className="flex-1 min-h-[300px] sm:min-h-[500px]">
-                  <RoutesMap
-                    routes={routes as any}
-                    depots={depots}
-                    selectedRoute={selectedRoute as any}
-                    onRouteSelect={setSelectedRoute as any}
-                  />
-                </div>
-                {selectedRoute && (
-                  <div className="w-full sm:w-96 border-t sm:border-t-0 sm:border-l border-slate-200 overflow-y-auto bg-white max-h-[50vh] sm:max-h-[calc(100vh-300px)]">
-                    <RouteDetails route={selectedRoute as any} onClose={() => setSelectedRoute(null)} />
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex-1 p-3 sm:p-4 bg-slate-50 overflow-auto">
-                <div className="grid gap-3 sm:gap-4">
-                  {routes.map((route, index) => (
-                    <Card
-                      key={route.id}
-                      className={`border cursor-pointer transition-all hover:shadow-md ${
-                        selectedRoute?.id === route.id ? "border-emerald-500 bg-emerald-50" : "border-slate-200"
-                      }`}
-                      onClick={() => setSelectedRoute(route)}
-                    >
-                      <CardContent className="p-3 sm:p-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 sm:gap-4">
-                            <div
-                              className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-sm sm:text-base shrink-0"
-                              style={{ backgroundColor: `hsl(${(index * 45) % 360}, 70%, 50%)` }}
-                            >
-                              {index + 1}
-                            </div>
-                            <div className="min-w-0">
-                              <h3 className="font-semibold text-slate-900 text-sm sm:text-base">
-                                {route.vehicle_plate}
-                              </h3>
-                              <p className="text-xs sm:text-sm text-slate-500 truncate">{route.depot_name}</p>
-                            </div>
+            <div className="flex-1 p-3 sm:p-4 bg-slate-50 overflow-auto">
+              <div className="grid gap-3 sm:gap-4">
+                {routes.map((route, index) => (
+                  <Card
+                    key={route.id}
+                    className={`border cursor-pointer transition-all hover:shadow-md ${
+                      selectedRoute?.id === route.id ? "border-emerald-500 bg-emerald-50" : "border-slate-200"
+                    }`}
+                    onClick={() => setSelectedRoute(route)}
+                  >
+                    <CardContent className="p-3 sm:p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                          <div
+                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-sm sm:text-base shrink-0"
+                            style={{ backgroundColor: `hsl(${(index * 45) % 360}, 70%, 50%)` }}
+                          >
+                            {index + 1}
                           </div>
-
-                          <div className="grid grid-cols-4 sm:flex sm:items-center gap-3 sm:gap-6">
-                            <div className="text-center">
-                              <p className="text-sm sm:text-lg font-bold text-slate-900">
-                                {route.total_distance_km.toFixed(0)}
-                              </p>
-                              <p className="text-[10px] sm:text-xs text-slate-500">km</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm sm:text-lg font-bold text-slate-900">
-                                {Math.round(route.total_duration_min)}
-                              </p>
-                              <p className="text-[10px] sm:text-xs text-slate-500">dk</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm sm:text-lg font-bold text-slate-900">{route.stops.length}</p>
-                              <p className="text-[10px] sm:text-xs text-slate-500">durak</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm sm:text-lg font-bold text-emerald-600">
-                                {route.total_cost.toLocaleString("tr-TR")}
-                              </p>
-                              <p className="text-[10px] sm:text-xs text-slate-500">TL</p>
-                            </div>
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-slate-900 text-sm sm:text-base">
+                              {route.vehicle_plate}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-slate-500 truncate">{route.depot_name}</p>
                           </div>
                         </div>
 
-                        {selectedRoute?.id === route.id && route.stops.length > 0 && (
-                          <div className="mt-4 pt-4 border-t border-slate-200">
-                            <p className="text-sm font-medium text-slate-700 mb-2">Duraklar:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {route.stops.map((stop, idx) => (
-                                <span
-                                  key={stop.id}
-                                  className="px-2 py-1 bg-slate-100 rounded text-xs sm:text-sm text-slate-600"
-                                >
-                                  {idx + 1}. {stop.customer_name}
-                                </span>
-                              ))}
-                            </div>
+                        <div className="grid grid-cols-4 sm:flex sm:items-center gap-3 sm:gap-6">
+                          <div className="text-center">
+                            <p className="text-sm sm:text-lg font-bold text-slate-900">
+                              {route.total_distance_km.toFixed(0)}
+                            </p>
+                            <p className="text-[10px] sm:text-xs text-slate-500">km</p>
                           </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                          <div className="text-center">
+                            <p className="text-sm sm:text-lg font-bold text-slate-900">
+                              {Math.round(route.total_duration_min)}
+                            </p>
+                            <p className="text-[10px] sm:text-xs text-slate-500">dk</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm sm:text-lg font-bold text-slate-900">{route.stops.length}</p>
+                            <p className="text-[10px] sm:text-xs text-slate-500">durak</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-sm sm:text-lg font-bold text-emerald-600">
+                              {route.total_cost.toLocaleString("tr-TR")}
+                            </p>
+                            <p className="text-[10px] sm:text-xs text-slate-500">TL</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {selectedRoute?.id === route.id && route.stops.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-slate-200">
+                          <p className="text-sm font-medium text-slate-700 mb-2">Duraklar:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {route.stops.map((stop, idx) => (
+                              <span
+                                key={stop.id}
+                                className="px-2 py-1 bg-slate-100 rounded text-xs sm:text-sm text-slate-600"
+                              >
+                                {idx + 1}. {stop.customer_name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+            {selectedRoute && (
+              <div className="flex-1 p-3 sm:p-4 bg-slate-50 overflow-auto">
+                <RouteDetails route={selectedRoute} />
               </div>
             )}
           </div>
