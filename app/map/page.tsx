@@ -81,6 +81,57 @@ export default function MapPage() {
         const totalCost = parseFloat(r.total_cost) || 0
         const fuelCost = parseFloat(r.fuel_cost) || 0
         
+        // Map stops and add depot return as final stop
+        const stops = (r.stops || []).map((s: any, idx: number) => ({
+          customerId: s.customer_id,
+          customerName: s.customer_name,
+          location: { lat: parseFloat(s.lat) || 0, lng: parseFloat(s.lng) || 0 },
+          demand: s.cumulative_load_pallets || 0,
+          stopOrder: s.stop_order || idx + 1,
+          cumulativeLoad: s.cumulative_load_pallets || 0,
+          distanceFromPrev: parseFloat(s.distance_from_prev_km) || 0,
+          durationFromPrev: parseInt(s.duration_from_prev_min) || 0,
+          arrivalTime: s.arrival_time,
+        }))
+        
+        // Add depot return as final stop with calculated distance
+        const depot = depotsData?.find((d: any) => d.id === r.depot_id)
+        if (depot && stops.length > 0) {
+          const lastStop = stops[stops.length - 1]
+          
+          // Calculate distance from last stop to depot using Haversine formula
+          const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+            const R = 6371 // Earth's radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180
+            const dLng = (lng2 - lng1) * Math.PI / 180
+            const a = 
+              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng / 2) * Math.sin(dLng / 2)
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+            return R * c
+          }
+          
+          const returnDistance = calculateDistance(
+            lastStop.location.lat,
+            lastStop.location.lng,
+            parseFloat(depot.lat),
+            parseFloat(depot.lng)
+          )
+          
+          stops.push({
+            customerId: `depot-${r.depot_id}`,
+            customerName: `${r.depot_name || depot.name} (Dönüş)`,
+            location: { lat: parseFloat(depot.lat), lng: parseFloat(depot.lng) },
+            demand: 0,
+            stopOrder: stops.length + 1,
+            cumulativeLoad: 0,
+            distanceFromPrev: returnDistance,
+            durationFromPrev: Math.round(returnDistance * 1.5), // Approximate: ~1.5 min per km
+            arrivalTime: null,
+          })
+        }
+        
         return {
           id: r.id,
           vehicle_id: r.vehicle_id,
@@ -88,23 +139,14 @@ export default function MapPage() {
           vehicle_type: r.vehicle_type || 1,
           depot_id: r.depot_id,
           depot_name: r.depot_name || "Unknown Depot",
-          stops: (r.stops || []).map((s: any, idx: number) => ({
-            customerId: s.customer_id,
-            customerName: s.customer_name,
-            location: { lat: parseFloat(s.lat) || 0, lng: parseFloat(s.lng) || 0 },
-            demand: s.cumulative_load_pallets || 0,
-            stopOrder: s.stop_order || idx + 1,
-            cumulativeLoad: s.cumulative_load_pallets || 0,
-            distanceFromPrev: parseFloat(s.distance_from_prev_km) || 0,
-            durationFromPrev: parseInt(s.duration_from_prev_min) || 0,
-            arrivalTime: s.arrival_time,
-          })),
+          stops: stops,
           distance_km: distanceKm,
           total_distance: distanceKm,
           total_duration: durationMin,
           total_cost: totalCost,
           fuel_cost: fuelCost,
           total_pallets: parseInt(r.total_pallets) || 0,
+          geometry: r.geometry || null,
           status: r.status || "pending",
         }
       })
@@ -384,11 +426,11 @@ export default function MapPage() {
                         <div className="grid grid-cols-3 gap-2 text-xs">
                           <div className="flex items-center gap-1 text-slate-600">
                             <Navigation className="w-3 h-3" />
-                            {route.total_distance_km?.toFixed(1) || 0} km
+                            {(route.distance_km || route.total_distance || 0).toFixed(1)} km
                           </div>
                           <div className="flex items-center gap-1 text-slate-600">
                             <Clock className="w-3 h-3" />
-                            {route.total_duration_min || 0} dk
+                            {route.total_duration || 0} dk
                           </div>
                           <div className="flex items-center gap-1 text-slate-600">
                             <MapPin className="w-3 h-3" />
@@ -400,19 +442,23 @@ export default function MapPage() {
                           <div className="mt-3 pt-3 border-t border-slate-200">
                             <div className="text-xs font-medium text-slate-700 mb-2">Duraklar:</div>
                             <div className="space-y-2">
-                              {route.stops.map((stop, index) => (
-                                <div key={stop.customer_id} className="flex items-center gap-2">
+                              {route.stops.map((stop: any, index: number) => (
+                                <div key={stop.customerId || index} className="flex items-center gap-2">
                                   <div
                                     className={cn(
                                       "w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold",
                                       index === 0 ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-600",
                                     )}
                                   >
-                                    {stop.order}
+                                    {stop.stopOrder || index + 1}
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <div className="text-xs font-medium truncate">{stop.customer_name}</div>
-                                    <div className="text-xs text-slate-400">{stop.arrival_time}</div>
+                                    <div className="text-xs font-medium truncate">{stop.customerName || "Durak"}</div>
+                                    <div className="text-xs text-slate-400">
+                                      {stop.distanceFromPrev > 0 && `+${stop.distanceFromPrev.toFixed(1)} km`}
+                                      {stop.durationFromPrev > 0 && ` dk ${stop.durationFromPrev}`}
+                                      {stop.demand > 0 && ` ${stop.demand} palet`}
+                                    </div>
                                   </div>
                                   {index === 0 && (
                                     <Badge

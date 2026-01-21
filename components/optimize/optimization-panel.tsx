@@ -264,6 +264,10 @@ export function OptimizationPanel() {
                 cumulativeDistance: stop.cumulativeDistance,
                 cumulativeLoad: stop.cumulativeLoad,
                 arrivalTime: stop.arrivalTime,
+                // Optimize API returns lat/lng as separate fields, not in location object
+                location: stop.location || { lat: stop.lat, lng: stop.lng },
+                lat: stop.lat,
+                lng: stop.lng,
               })),
             }
           }),

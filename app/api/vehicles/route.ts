@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { sql } from "@/lib/neon"
 import type { NextRequest } from "next/server"
+import { vehicleSchema } from "@/lib/validations"
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,6 +35,98 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Failed to fetch vehicles",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    )
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    
+    // Validate request body
+    const validation = vehicleSchema.safeParse(body)
+    if (!validation.success) {
+      console.error("[v0] Vehicle validation failed:", validation.error.errors)
+      return NextResponse.json(
+        { error: "Invalid vehicle data", details: validation.error.errors },
+        { status: 400 }
+      )
+    }
+
+    const data = validation.data
+
+    const [vehicle] = await sql`
+      INSERT INTO vehicles (
+        id, plate, vehicle_type, capacity_pallet, depot_id, status
+      ) VALUES (
+        ${data.id || `v-${Date.now()}`},
+        ${data.plate},
+        ${data.vehicle_type},
+        ${data.capacity_pallet},
+        ${data.depot_id},
+        'available'
+      )
+      RETURNING *
+    `
+
+    console.log("[v0] Vehicle created:", vehicle.id)
+    return NextResponse.json(vehicle, { status: 201 })
+  } catch (error) {
+    console.error("[v0] Vehicle create error:", error)
+    return NextResponse.json(
+      {
+        error: "Failed to create vehicle",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    )
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json()
+    
+    // Validate request body
+    const validation = vehicleSchema.safeParse(body)
+    if (!validation.success) {
+      console.error("[v0] Vehicle validation failed:", validation.error.errors)
+      return NextResponse.json(
+        { error: "Invalid vehicle data", details: validation.error.errors },
+        { status: 400 }
+      )
+    }
+
+    const data = validation.data
+
+    if (!data.id) {
+      return NextResponse.json({ error: "Vehicle ID required for update" }, { status: 400 })
+    }
+
+    const [vehicle] = await sql`
+      UPDATE vehicles SET
+        plate = ${data.plate},
+        vehicle_type = ${data.vehicle_type},
+        capacity_pallet = ${data.capacity_pallet},
+        depot_id = ${data.depot_id}
+      WHERE id = ${data.id}
+      RETURNING *
+    `
+
+    if (!vehicle) {
+      return NextResponse.json({ error: "Vehicle not found" }, { status: 404 })
+    }
+
+    console.log("[v0] Vehicle updated:", vehicle.id)
+    return NextResponse.json(vehicle)
+  } catch (error) {
+    console.error("[v0] Vehicle update error:", error)
+    return NextResponse.json(
+      {
+        error: "Failed to update vehicle",
         details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
