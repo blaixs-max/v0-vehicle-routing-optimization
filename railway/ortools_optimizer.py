@@ -336,8 +336,42 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         # In production, consider implementing this as a post-optimization filter or
         # using OR-Tools allowed/forbidden arc callbacks with proper slack
         
-        print(f"[OR-Tools] ===== TIME DIMENSION: DISABLED =====")
-        print(f"[OR-Tools] Using DISTANCE-ONLY optimization (no time constraints)")
+        # TIME DIMENSION: Add time constraints (max 600 minutes per vehicle)
+        print(f"[OR-Tools] ===== TIME DIMENSION: ENABLED =====")
+        print(f"[OR-Tools] Maximum route duration: 600 minutes (10 hours)")
+        
+        # Time callback: distance/speed + service time
+        def time_callback(from_index, to_index):
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            
+            travel_distance_m = distance_matrix[from_node][to_node]
+            travel_time_min = (travel_distance_m / 1000) / 60 * 60  # Assume 60 km/h average speed
+            
+            # Add service time at destination (if not depot)
+            service_time = service_times_list[to_node] if to_node > 0 else 0
+            
+            return int(travel_time_min + service_time)
+        
+        time_callback_index = routing.RegisterTransitCallback(time_callback)
+        
+        # Add time dimension with 600-minute max per vehicle
+        routing.AddDimension(
+            time_callback_index,
+            0,  # no slack
+            600,  # maximum 600 minutes per vehicle
+            True,  # start cumul to zero
+            'Time'
+        )
+        
+        time_dimension = routing.GetDimensionOrDie('Time')
+        
+        # Set maximum time for each vehicle to 600 minutes
+        for vehicle_id in range(num_vehicles):
+            end_index = routing.End(vehicle_id)
+            time_dimension.CumulVar(end_index).SetMax(600)  # 600 dakika = 10 saat
+        
+        print(f"[OR-Tools] Time dimension added with 600-minute limit per vehicle")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = (
@@ -379,6 +413,9 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         # Parse results
         routes = []
+        
+        # Get time dimension for duration calculation
+        time_dimension = routing.GetDimensionOrDie('Time')
         
         for vehicle_id in range(num_vehicles):
             index = routing.Start(vehicle_id)
@@ -431,6 +468,17 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 vehicle = vehicles[vehicle_id]
                 fuel_consumption = VEHICLE_TYPES[vehicle["type"]]["fuel"]
                 
+                # Calculate route duration from time dimension
+                end_index = routing.End(vehicle_id)
+                route_duration_min = solution.Min(time_dimension.CumulVar(end_index))
+                
+                # Validate duration against 600-minute limit
+                if route_duration_min > 600:
+                    print(f"[OR-Tools] WARNING: Route for vehicle {vehicle_id} exceeds time limit!")
+                    print(f"[OR-Tools]   Duration: {route_duration_min} min (limit: 600 min)")
+                    print(f"[OR-Tools]   Distance: {route_distance_km:.2f} km")
+                    print(f"[OR-Tools]   Stops: {len(route_stops)}")
+                
                 fuel_cost = (route_distance_km / 100) * fuel_consumption * fuel_price
                 distance_cost = route_distance_km * 2.5
                 fixed_cost = 500.0
@@ -445,6 +493,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                     "depot_name": primary_depot.get("name", primary_depot["id"]),
                     "stops": route_stops,
                     "distance_km": round(route_distance_km, 2),
+                    "duration_minutes": round(route_duration_min, 2),  # ADD DURATION
                     "fuel_cost": round(fuel_cost, 2),
                     "distance_cost": round(distance_cost, 2),
                     "fixed_cost": round(fixed_cost, 2),

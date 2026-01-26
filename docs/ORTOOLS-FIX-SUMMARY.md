@@ -66,11 +66,11 @@ Added logging throughout the optimization pipeline:
 ### Implement Soft Vehicle Type Constraints
 Instead of hard constraints that make the problem infeasible, implement soft constraints:
 
-```python
+\`\`\`python
 # Create a penalty cost for mismatched vehicle types
 penalty_callback_index = routing.RegisterTransitCallback(penalty_callback)
 routing.SetArcCostEvaluatorOfVehicle(penalty_callback_index, vehicle_id)
-```
+\`\`\`
 
 This allows the solver to find a solution while preferring correct vehicle types.
 

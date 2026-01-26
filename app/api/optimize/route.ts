@@ -623,6 +623,13 @@ async function optimizeWithRailway(
       const vehicleId = route.vehicle_id || `vehicle-${index}`
       const routeId = `route-${Date.now()}-${vehicleId}`
       
+      // Validate duration - should not exceed 600 minutes
+      const calculatedDuration = route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0
+      if (calculatedDuration > 600) {
+        console.warn(`[v0] WARNING: Route ${vehicleId} has duration ${calculatedDuration} min (>600 min limit!)`)
+        console.warn(`[v0] Route details: distance=${route.distance_km}km, stops=${route.stops?.length}`)
+      }
+      
       return {
         id: routeId,
         vehicleId: vehicleId,
@@ -638,8 +645,8 @@ async function optimizeWithRailway(
         depotName: route.depot_name || depotMap.get(route.depot_id)?.name || "Depo",
         totalDistance: route.distance_km || route.total_distance_km || 0,
         distance: route.distance_km || route.total_distance_km || 0,
-        totalDuration: route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0,
-        duration: route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0,
+        totalDuration: calculatedDuration,
+        duration: calculatedDuration,
         totalCost: route.total_cost || 0,
         totalLoad: route.total_pallets || route.total_load || 0,
         load: route.total_pallets || route.total_load || 0,

@@ -40,11 +40,11 @@
 ## Deployment Adımları
 
 ### Adım 1: GitHub'a Push
-```bash
+\`\`\`bash
 git add .
 git commit -m "fix: OR-Tools optimization with relaxed vehicle type constraints"
 git push origin main
-```
+\`\`\`
 
 ### Adım 2: Railway Deployment
 1. Railway dashboard'a gidin
