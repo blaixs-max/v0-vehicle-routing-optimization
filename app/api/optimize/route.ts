@@ -375,17 +375,27 @@ async function optimizeWithORS(
 }
 
 async function warmupRailway(): Promise<void> {
-  if (!process.env.RAILWAY_API_URL) return
+  if (!process.env.RAILWAY_API_URL) {
+    console.warn("[v0] RAILWAY_API_URL not configured!")
+    return
+  }
 
   try {
-    console.log("[v0] Warming up Railway...")
-    await fetch(`${process.env.RAILWAY_API_URL}/health`, {
+    console.log("[v0] Warming up Railway at:", process.env.RAILWAY_API_URL)
+    const response = await fetch(`${process.env.RAILWAY_API_URL}/health`, {
       method: "GET",
       signal: AbortSignal.timeout(5000),
     })
-    console.log("[v0] Railway warmed up")
+    
+    if (response.ok) {
+      const data = await response.json()
+      console.log("[v0] Railway warmed up successfully:", data)
+    } else {
+      console.warn("[v0] Railway health check failed:", response.status, response.statusText)
+    }
   } catch (error) {
-    console.warn("[v0] Railway warmup failed (non-critical):", error)
+    console.error("[v0] Railway warmup failed:", error)
+    throw new Error(`Railway servisi yanıt vermiyor. Lütfen RAILWAY_API_URL'yi kontrol edin veya VROOM algoritmasını kullanın. Error: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -400,8 +410,10 @@ async function optimizeWithRailway(
   console.log("[v0] DEBUG optimizeWithRailway: First customer:", JSON.stringify(customers[0], null, 2))
 
   if (!process.env.RAILWAY_API_URL) {
-    throw new Error("Railway API URL not configured")
+    throw new Error("RAILWAY_API_URL environment variable yapılandırılmamış. Lütfen Vercel'de RAILWAY_API_URL environment variable'ını ekleyin veya VROOM algoritmasını kullanın.")
   }
+  
+  console.log("[v0] Railway API URL:", process.env.RAILWAY_API_URL)
 
   const availableVehicles = vehicles.filter((v) => v.status !== "maintenance" && v.status !== "inactive")
 
@@ -430,6 +442,27 @@ async function optimizeWithRailway(
   }
 
   const serviceDurationMinutes = 45 // Default fallback
+  
+  // Müşterilere depot_id ata - eğer yoksa en yakın depoyu bul
+  const assignDepotToCustomer = (customer: any) => {
+    if (customer.assigned_depot_id) {
+      return customer.assigned_depot_id
+    }
+    
+    // En yakın depoyu bul
+    let nearestDepot = depots[0]
+    let minDistance = Number.POSITIVE_INFINITY
+    
+    for (const depot of depots) {
+      const dist = haversineDistance(customer.lat, customer.lng, depot.lat, depot.lng)
+      if (dist < minDistance) {
+        minDistance = dist
+        nearestDepot = depot
+      }
+    }
+    
+    return nearestDepot.id
+  }
 
   const railwayRequest = {
     depots: depots.map((d) => ({
@@ -442,11 +475,12 @@ async function optimizeWithRailway(
     })),
     customers: customersWithOrders.map((c) => {
       const order = orderMap.get(c.id)!
-      console.log(`[v0] Customer ${c.id}: assigned_depot_id="${c.assigned_depot_id}", keys=${Object.keys(c).join(',')}`)
+      const depotId = assignDepotToCustomer(c)
+      console.log(`[v0] Customer ${c.id}: assigned_depot_id="${depotId}"`)
       return {
         id: c.id,
         name: c.name || c.company_name || `Müşteri ${c.id}`,
-        depot_id: c.assigned_depot_id || null,  // Customer's assigned depot
+        depot_id: depotId,  // Customer's assigned depot (guaranteed to have value)
         location: {
           lat: c.lat,
           lng: c.lng,
@@ -525,12 +559,18 @@ async function optimizeWithRailway(
     if (!railwayResponse.ok) {
       const errorText = await railwayResponse.text()
       console.error("[v0] Railway API error:", errorText)
+      console.error("[v0] Railway response status:", railwayResponse.status)
+      console.error("[v0] Railway response headers:", Object.fromEntries(railwayResponse.headers.entries()))
       
-      if (railwayResponse.status === 502) {
-        throw new Error(`Railway OR-Tools servisi yanıt vermiyor (502). Lütfen Railway dashboard'unuzda servisin çalıştığından emin olun veya VROOM algoritmasını kullanın.`)
+      if (railwayResponse.status === 502 || railwayResponse.status === 503) {
+        throw new Error(`Railway OR-Tools servisi yanıt vermiyor (${railwayResponse.status}). Olası nedenler:\n1. Railway servisi çalışmıyor olabilir - Railway dashboard'u kontrol edin\n2. RAILWAY_API_URL yanlış olabilir: ${process.env.RAILWAY_API_URL}\n3. Railway servisi cold start yaşıyor olabilir - birkaç saniye bekleyip tekrar deneyin\n\nAlternatif: VROOM algoritmasını kullanabilirsiniz.`)
       }
       
-      throw new Error(`Railway API error (${railwayResponse.status}): ${errorText}`)
+      if (railwayResponse.status === 404) {
+        throw new Error(`Railway API endpoint bulunamadı (404). RAILWAY_API_URL doğru mu? ${process.env.RAILWAY_API_URL}/optimize`)
+      }
+      
+      throw new Error(`Railway API hatası (${railwayResponse.status}): ${errorText}`)
     }
 
     const railwayResult = await railwayResponse.json()

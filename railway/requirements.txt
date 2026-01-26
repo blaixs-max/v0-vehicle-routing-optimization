@@ -1,5 +1,13 @@
+# Core dependencies
 fastapi==0.109.0
-uvicorn==0.27.0
-ortools==9.8.3296
+uvicorn[standard]==0.27.0
 pydantic==2.5.3
+
+# OR-Tools for route optimization
+ortools==9.8.3296
+
+# HTTP client for OSRM API calls
 requests==2.31.0
+
+# Additional dependencies
+python-multipart==0.0.6

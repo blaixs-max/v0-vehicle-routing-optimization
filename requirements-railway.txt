@@ -3,3 +3,4 @@ uvicorn[standard]==0.24.0
 ortools==9.8.3296
 numpy==1.26.2
 pydantic==2.5.0
+requests==2.31.0
