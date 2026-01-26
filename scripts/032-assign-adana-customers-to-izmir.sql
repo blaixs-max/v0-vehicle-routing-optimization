@@ -3,10 +3,10 @@
 -- Purpose: Move 23 Adana customers and their orders to İzmir depot
 -- =====================================================
 
--- Step 1: First check İzmir depot ID
-SELECT 'İzmir Depot Info:' as info, id, name, city, lat, lng 
+-- Step 1: First check Izmir depot ID
+SELECT 'Izmir Depot Info:' as info, id, name, city, lat, lng 
 FROM depots 
-WHERE city = 'İzmir';
+WHERE city = 'Izmir';
 
 -- Step 2: Check current Adana customers status
 SELECT 'Current Adana Customers:' as info, 
@@ -22,33 +22,33 @@ FROM customers
 WHERE city = 'Adana'
 ORDER BY id;
 
--- Step 4: Get İzmir depot ID first and update Adana customers
+-- Step 4: Get Izmir depot ID first and update Adana customers
 DO $$
 DECLARE
-  izmir_depot_id UUID;
+  izmir_depot_id VARCHAR;
   updated_count INTEGER;
 BEGIN
-  -- Get İzmir depot ID
-  SELECT id INTO izmir_depot_id FROM depots WHERE city = 'İzmir' LIMIT 1;
+  -- Get Izmir depot ID (it's 'depot-3')
+  SELECT id INTO izmir_depot_id FROM depots WHERE city = 'Izmir' LIMIT 1;
   
   IF izmir_depot_id IS NULL THEN
-    RAISE EXCEPTION 'İzmir depot not found!';
+    RAISE EXCEPTION 'Izmir depot not found!';
   END IF;
   
-  -- Update all Adana customers to İzmir depot
+  -- Update all Adana customers to Izmir depot
   UPDATE customers 
   SET assigned_depot_id = izmir_depot_id
   WHERE city = 'Adana';
   
   GET DIAGNOSTICS updated_count = ROW_COUNT;
   
-  RAISE NOTICE 'Updated % Adana customers to İzmir depot: %', updated_count, izmir_depot_id;
+  RAISE NOTICE 'Updated % Adana customers to Izmir depot: %', updated_count, izmir_depot_id;
 END $$;
 
 -- Step 5: Verify the customer update
 SELECT 'After Update - Adana Customers:' as info, 
        COUNT(*) as total_count,
-       COUNT(CASE WHEN assigned_depot_id = (SELECT id FROM depots WHERE city = 'İzmir' LIMIT 1) THEN 1 END) as izmir_depot_count,
+       COUNT(CASE WHEN assigned_depot_id = (SELECT id FROM depots WHERE city = 'Izmir' LIMIT 1) THEN 1 END) as izmir_depot_count,
        COUNT(CASE WHEN assigned_depot_id IS NULL THEN 1 END) as null_depot_count
 FROM customers 
 WHERE city = 'Adana';
@@ -56,7 +56,7 @@ WHERE city = 'Adana';
 -- Step 6: Show Adana orders with their new depot assignment (via customer)
 SELECT 'Adana Orders (via Customer):' as info,
        COUNT(o.id) as total_orders,
-       COUNT(CASE WHEN c.assigned_depot_id = (SELECT id FROM depots WHERE city = 'İzmir' LIMIT 1) THEN 1 END) as orders_with_izmir_depot
+       COUNT(CASE WHEN c.assigned_depot_id = (SELECT id FROM depots WHERE city = 'Izmir' LIMIT 1) THEN 1 END) as orders_with_izmir_depot
 FROM orders o
 JOIN customers c ON o.customer_id = c.id
 WHERE c.city = 'Adana';
@@ -71,8 +71,8 @@ LEFT JOIN customers c ON c.assigned_depot_id = d.id
 GROUP BY d.id, d.name, d.city
 ORDER BY d.city;
 
--- Step 8: Show İzmir depot capacity
-SELECT 'İzmir Depot Capacity:' as info,
+-- Step 8: Show Izmir depot capacity
+SELECT 'Izmir Depot Capacity:' as info,
        d.name,
        d.city,
        COUNT(DISTINCT c.id) as total_customers,
@@ -82,5 +82,5 @@ SELECT 'İzmir Depot Capacity:' as info,
 FROM depots d
 LEFT JOIN customers c ON c.assigned_depot_id = d.id
 LEFT JOIN vehicles v ON v.depot_id = d.id
-WHERE d.city = 'İzmir'
+WHERE d.city = 'Izmir'
 GROUP BY d.id, d.name, d.city, d.capacity_pallets;
