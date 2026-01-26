@@ -31,6 +31,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(customers)
   } catch (error) {
     console.error("[v0] Customers fetch error:", error)
+    console.error("[v0] Error details:", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined
+    })
     return NextResponse.json(
       {
         error: "Failed to fetch customers",
