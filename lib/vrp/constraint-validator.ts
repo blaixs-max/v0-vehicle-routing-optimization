@@ -202,18 +202,31 @@ export function validateVehicleType(stops: any[], vehicle: Vehicle, customers: C
 
   for (const stop of stops) {
     const customer = customers.find((c) => c.id === stop.customerId)
-    if (!customer || !customer.required_vehicle_types) continue
+    if (!customer) continue
 
-    const requiredTypes = customer.required_vehicle_types
     const vehicleType = vehicle.vehicle_type || vehicle.type
-
-    if (requiredTypes.length > 0 && !requiredTypes.includes(vehicleType)) {
+    
+    // Check single vehicle type requirement
+    if (customer.required_vehicle_type && customer.required_vehicle_type !== vehicleType) {
       violations.push({
         type: "vehicle_type",
         severity: "error",
-        message: `${customer.name} için uygun araç tipi değil. Gerekli: ${requiredTypes.join(", ")}, Mevcut: ${vehicleType}`,
+        message: `${customer.name} için uygun araç tipi değil. Gerekli: ${customer.required_vehicle_type}, Mevcut: ${vehicleType}`,
         stopIndex: stops.indexOf(stop),
       })
+    }
+    
+    // Also check array format for backward compatibility
+    if (customer.required_vehicle_types && customer.required_vehicle_types.length > 0) {
+      const requiredTypes = customer.required_vehicle_types
+      if (!requiredTypes.includes(vehicleType)) {
+        violations.push({
+          type: "vehicle_type",
+          severity: "error",
+          message: `${customer.name} için uygun araç tipi değil. Gerekli: ${requiredTypes.join(", ")}, Mevcut: ${vehicleType}`,
+          stopIndex: stops.indexOf(stop),
+        })
+      }
     }
   }
 

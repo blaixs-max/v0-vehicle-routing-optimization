@@ -36,6 +36,7 @@ class Customer(BaseModel):
     constraint_start_time: Optional[str] = None  # Format: "HH:MM" - start of CLOSED period
     constraint_end_time: Optional[str] = None    # Format: "HH:MM" - end of CLOSED period
     required_vehicle_types: Optional[List[int]] = None
+    required_vehicle_type: Optional[str] = None  # Single required vehicle type (kamyonet, kamyon_1, etc.)
 
 class Vehicle(BaseModel):
     id: str
@@ -52,6 +53,7 @@ class OptimizeRequest(BaseModel):
     vehicles: List[Vehicle]
     depots: List[Depot]
     fuel_price: float = 47.50
+    osrm_url: Optional[str] = None  # OSRM API URL for real road distances
 
 class OptimizeResponse(BaseModel):
     success: bool
@@ -74,6 +76,10 @@ def health():
 @app.post("/optimize", response_model=OptimizeResponse)
 def optimize(request: OptimizeRequest):
     try:
+        # OSRM URL'yi environment variable'a kaydet (optimizer içinde kullanılacak)
+        if request.osrm_url:
+            os.environ['OSRM_URL'] = request.osrm_url
+        
         # OR-Tools optimizer'ı çağır
         result = optimize_routes(
             customers=[c.dict() for c in request.customers],

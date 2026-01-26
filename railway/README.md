@@ -20,17 +20,17 @@ Railway otomatik PORT atayacak
 
 ## Test
 
-```bash
+\`\`\`bash
 curl https://YOUR-RAILWAY-URL.railway.app/health
-```
+\`\`\`
 
 Sonuç:
-```json
+\`\`\`json
 {"status": "healthy"}
-```
+\`\`\`
 
 ## Vercel Entegrasyonu
 
 Railway URL'ini Vercel environment variable olarak ekle:
-```
+\`\`\`
 RAILWAY_API_URL=https://YOUR-RAILWAY-URL.railway.app

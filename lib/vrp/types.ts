@@ -5,11 +5,13 @@ export interface Point {
   demand: number // palet cinsinden
   demandKg: number
   demandM3: number // Hacim talebi
-  serviceDurationMin: number // Servis süresi
-  timeWindowStart: string | null // Teslimat başlangıç
-  timeWindowEnd: string | null // Teslimat bitiş
-  requiredVehicleType: "any" | "kamyon" | "tir" // Araç tipi kısıtı
-  priority: number
+  serviceDurationMin?: number // Servis süresi
+  serviceDuration?: number // Alias for serviceDurationMin
+  timeWindowStart?: string | null // Teslimat başlangıç
+  timeWindowEnd?: string | null // Teslimat bitiş
+  requiredVehicleType?: string | null // Araç tipi kısıtı (tek)
+  requiredVehicleTypes?: string[] // Araç tipi kısıtları (çoklu, backward compatibility)
+  priority?: number
   name?: string
   businessType?: "MCD" | "IKEA" | "CHL" | "OPT" | "OTHER"
 }

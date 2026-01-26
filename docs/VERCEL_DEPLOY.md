@@ -12,14 +12,14 @@ Vercel Dashboard > Settings > Environment Variables:
 ### 2. Deploy Et
 
 v0'da **"Publish"** butonuna tıkla veya:
-```bash
+\`\`\`bash
 vercel deploy
-```
+\`\`\`
 
 ### 3. Python Runtime Otomatik Kurulur
 
 `vercel.json` dosyasında Python runtime tanımlı:
-```json
+\`\`\`json
 {
   "functions": {
     "api/optimize_ortools.py": {
@@ -27,7 +27,7 @@ vercel deploy
     }
   }
 }
-```
+\`\`\`
 
 Vercel otomatik olarak:
 - Python 3.9 runtime kurar

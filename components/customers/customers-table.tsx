@@ -152,6 +152,7 @@ export function CustomersTable() {
               <TableHead>Adres</TableHead>
               <TableHead>Konum</TableHead>
               <TableHead>Depo</TableHead>
+              <TableHead>Araç Kısıtı</TableHead>
               <TableHead>Öncelik</TableHead>
               <TableHead className="text-right">İşlemler</TableHead>
             </TableRow>
@@ -200,6 +201,19 @@ export function CustomersTable() {
                       </Badge>
                     ) : (
                       <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {customer.required_vehicle_type ? (
+                      <Badge variant="secondary" className="text-xs">
+                        {customer.required_vehicle_type === "kamyonet" && "Kamyonet"}
+                        {customer.required_vehicle_type === "kamyon_1" && "Kamyon 1"}
+                        {customer.required_vehicle_type === "kamyon_2" && "Kamyon 2"}
+                        {customer.required_vehicle_type === "tir" && "TIR"}
+                        {customer.required_vehicle_type === "romork" && "Romork"}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Yok</span>
                     )}
                   </TableCell>
                   <TableCell>

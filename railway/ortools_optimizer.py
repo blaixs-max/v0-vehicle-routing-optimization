@@ -1,6 +1,8 @@
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import math
+import os
+import requests
 from typing import List, Dict
 
 # Multi-depot VRP optimization with OR-Tools
@@ -28,13 +30,62 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     
     lat1_rad = math.radians(lat1)
     lat2_rad = math.radians(lat2)
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
+    lon1_rad = math.radians(lon1)
+    lon2_rad = math.radians(lon2)
+    
+    dlat = lat2_rad - lat1_rad
+    dlon = lon2_rad - lon1_rad
     
     a = math.sin(dlat/2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon/2)**2
     c = 2 * math.asin(math.sqrt(a))
     
     return R * c
+
+def get_osrm_distance_matrix(locations: List[tuple], osrm_url: str = None) -> List[List[int]]:
+    """
+    OSRM Table API kullanarak gerçek yol mesafesi matrisi hesapla
+    Returns: Mesafe matrisi (metre cinsinden)
+    """
+    if not osrm_url:
+        osrm_url = os.environ.get('OSRM_URL', 'https://router.project-osrm.org')
+    
+    try:
+        # Koordinatları OSRM formatına çevir: lng,lat
+        coords_str = ';'.join([f"{loc[1]},{loc[0]}" for loc in locations])
+        url = f"{osrm_url}/table/v1/driving/{coords_str}?annotations=distance"
+        
+        print(f"[OR-Tools] OSRM Table API çağrılıyor: {len(locations)} nokta")
+        print(f"[OR-Tools] OSRM URL: {osrm_url}")
+        
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        if data.get('code') != 'Ok':
+            raise Exception(f"OSRM error: {data.get('code')}")
+        
+        # OSRM distance matrix'i döndür (zaten metre cinsinden)
+        distance_matrix = data['distances']
+        print(f"[OR-Tools] ✓ OSRM Table API başarılı - Gerçek yol mesafesi kullanılıyor")
+        return [[int(d) for d in row] for row in distance_matrix]
+        
+    except Exception as e:
+        print(f"[OR-Tools] ✗ OSRM Table API hatası: {str(e)}")
+        print(f"[OR-Tools] → Fallback: Haversine (kuş uçuşu) mesafe kullanılıyor")
+        
+        # Fallback: Haversine ile hesapla
+        matrix = []
+        for i, loc1 in enumerate(locations):
+            row = []
+            for j, loc2 in enumerate(locations):
+                if i == j:
+                    row.append(0)
+                else:
+                    dist = haversine_distance(loc1[0], loc1[1], loc2[0], loc2[1])
+                    row.append(int(dist * 1000))  # km'den metreye
+            matrix.append(row)
+        return matrix
 
 def time_to_minutes(time_str: str) -> int:
     """Convert HH:MM time string to minutes from start of day"""
@@ -205,18 +256,18 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         print(f"[OR-Tools] Locations: {num_locations} (1 depot + {num_locations-1} customers)")
         print(f"[OR-Tools] Total demand: {sum(demands)} pallets")
         
-        # Distance matrix
-        distance_matrix = []
-        for i, loc1 in enumerate(locations):
-            row = []
-            for j, loc2 in enumerate(locations):
-                if i == j:
-                    row.append(0)
-                else:
-                    dist = haversine_distance(loc1[0], loc1[1], loc2[0], loc2[1])
-                    dist = max(0.1, min(dist, 20000))
-                    row.append(int(dist * 1000))
-            distance_matrix.append(row)
+        # Distance matrix - OSRM Table API ile gerçek yol mesafesi
+        print(f"[OR-Tools] ===== MESAFE MATRİSİ HESAPLANIYOR =====")
+        osrm_url = os.environ.get('OSRM_URL', 'https://router.project-osrm.org')
+        distance_matrix = get_osrm_distance_matrix(locations, osrm_url)
+        
+        # Sanity check
+        for i, row in enumerate(distance_matrix):
+            for j, dist in enumerate(row):
+                if dist < 0:
+                    distance_matrix[i][j] = 0
+                elif dist > 20000000:  # 20,000 km üzeri
+                    distance_matrix[i][j] = 20000000
         
         vehicle_capacities = [v.get("capacity_pallets", 26) for v in vehicles]
         total_capacity = sum(vehicle_capacities)
@@ -253,6 +304,34 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         )
         
         print(f"[OR-Tools] Capacity dimension added")
+        
+        # Vehicle type constraints
+        print(f"[OR-Tools] ===== ADDING VEHICLE TYPE CONSTRAINTS =====")
+        for customer_idx, customer in enumerate(customers):
+            required_type = customer.get("required_vehicle_type")
+            if required_type:
+                node_idx = customer_idx + 1  # +1 because depot is at index 0
+                print(f"[OR-Tools] Customer {customer['name']} requires vehicle type: {required_type}")
+                
+                # Map vehicle type names to integers
+                type_mapping = {
+                    "kamyonet": 0,
+                    "kamyon_1": 1,
+                    "kamyon_2": 2,
+                    "tir": 3,
+                    "romork": 4
+                }
+                
+                required_type_int = type_mapping.get(required_type.lower())
+                if required_type_int is not None:
+                    # Only allow vehicles with matching type to visit this node
+                    for vehicle_id in range(num_vehicles):
+                        vehicle_type_int = vehicles[vehicle_id].get("type", 0)
+                        if vehicle_type_int != required_type_int:
+                            # Disallow this vehicle from visiting this customer
+                            index = manager.NodeToIndex(node_idx)
+                            routing.VehicleVar(index).RemoveValue(vehicle_id)
+                            print(f"[OR-Tools]   Disallowing vehicle {vehicle_id} (type {vehicle_type_int}) for customer {customer['name']}")
         
         print(f"[OR-Tools] ===== TIME DIMENSION: DISABLED =====")
         print(f"[OR-Tools] Using DISTANCE-ONLY optimization (no time constraints)")
