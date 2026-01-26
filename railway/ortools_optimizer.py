@@ -305,18 +305,36 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         print(f"[OR-Tools] Capacity dimension added")
         
-        # Vehicle type constraints - DISABLED (causing infeasibility)
-        # The strict vehicle type constraints were causing OR-Tools to fail
-        # because they made the problem infeasible. Commented out for now.
-        print(f"[OR-Tools] ===== VEHICLE TYPE CONSTRAINTS: DISABLED =====")
-        print(f"[OR-Tools] All vehicles can visit all customers (for feasibility)")
-        # TODO: Implement soft constraints with penalties instead of hard constraints
+        # Vehicle type constraints - RELAXED APPROACH
+        # We log vehicle type preferences but don't enforce them strictly
+        # This ensures OR-Tools can always find a solution
+        print(f"[OR-Tools] ===== VEHICLE TYPE CONSTRAINTS: RELAXED =====")
         
-        # for customer_idx, customer in enumerate(customers):
-        #     required_type = customer.get("required_vehicle_type")
-        #     if required_type:
-        #         node_idx = customer_idx + 1
-        #         print(f"[OR-Tools] Customer {customer['name']} requires vehicle type: {required_type}")
+        # Map vehicle type names to integers  
+        type_mapping = {
+            "kamyonet": 0,
+            "kamyon_1": 1,
+            "kamyon_2": 2,
+            "tir": 3,
+            "romork": 4
+        }
+        
+        # Log vehicle type preferences for visibility
+        constraint_count = 0
+        for customer_idx, customer in enumerate(customers):
+            required_type = customer.get("required_vehicle_type")
+            if required_type:
+                constraint_count += 1
+                print(f"[OR-Tools] Customer {customer['name']} prefers: {required_type} (not enforced)")
+        
+        if constraint_count > 0:
+            print(f"[OR-Tools] Found {constraint_count} vehicle type preferences (logged only)")
+        else:
+            print(f"[OR-Tools] No vehicle type preferences specified")
+        
+        # NOTE: Strict vehicle type constraints are disabled to ensure feasibility
+        # In production, consider implementing this as a post-optimization filter or
+        # using OR-Tools allowed/forbidden arc callbacks with proper slack
         
         print(f"[OR-Tools] ===== TIME DIMENSION: DISABLED =====")
         print(f"[OR-Tools] Using DISTANCE-ONLY optimization (no time constraints)")

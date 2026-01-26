@@ -497,9 +497,8 @@ async function optimizeWithRailway(
               end: c.constraint_end_time,
             }
           : null,
-        // TEMPORARY FIX: Disable vehicle type constraints until Railway service is updated
-        // This allows OR-Tools to find feasible solutions
-        required_vehicle_type: null, // c.required_vehicle_type || null,
+        // Vehicle type preference (logged by OR-Tools but not strictly enforced)
+        required_vehicle_type: c.required_vehicle_type || null,
       }
     }),
     vehicles: availableVehicles.map((v) => {
