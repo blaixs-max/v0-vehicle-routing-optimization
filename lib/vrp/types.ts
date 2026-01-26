@@ -54,6 +54,8 @@ export interface RouteResult {
   totalM3: number // Toplam hacim
   totalCost: number // Yakıt + Geçiş
   fuelCost: number
+  fixedCost?: number // Sabit günlük maliyet
+  distanceCost?: number // Mesafe bazlı maliyet
   tollCost: number // Köprü/otoyol
   feasible: boolean // Rotanın fizibilitesi
   violations: string[] // Kısıt ihlalleri listesi

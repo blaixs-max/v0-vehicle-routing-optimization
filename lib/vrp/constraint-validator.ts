@@ -5,13 +5,13 @@ import { DRIVER_RULES } from "@/lib/constants"
 
 export interface RouteConstraintViolation {
   type:
-    | "time_window"
-    | "capacity_weight"
-    | "capacity_volume"
-    | "capacity_pallet"
-    | "work_hours"
-    | "vehicle_type"
-    | "driver_break"
+  | "time_window"
+  | "capacity_weight"
+  | "capacity_volume"
+  | "capacity_pallet"
+  | "work_hours"
+  | "vehicle_type"
+  | "driver_break"
   severity: "error" | "warning"
   message: string
   stopIndex?: number
@@ -102,7 +102,7 @@ export function validateTimeWindows(
         })
       }
 
-      currentTime = Math.max(arrivalTime, windowStart) + (customer.service_duration || 15)
+      currentTime = Math.max(arrivalTime, windowStart) + (customer.service_duration_min || customer.service_duration || 15)
     } else {
       currentTime += stop.serviceTime || 15
     }
@@ -147,7 +147,7 @@ export function validateCapacity(stops: any[], vehicle: Vehicle, customers: Cust
   }
 
   // Palet kontrolü
-  const palletCapacity = vehicle.capacity_pallet || vehicle.capacity_pallets || 12
+  const palletCapacity = vehicle.capacity_pallets || 12
   if (totalPallets > palletCapacity) {
     violations.push({
       type: "capacity_pallet",

@@ -20,11 +20,19 @@ export interface Vehicle {
   vehicle_type: "kamyon" | "tir" | "kamyonet" | "doblo"
   capacity_kg: number
   capacity_pallet: number
+  capacity_pallets?: number // Alias for capacity_pallet
+  capacity_m3?: number
   cost_per_km: number
   fuel_consumption_per_100km: number
+  fuel_consumption?: number // Alias
   fixed_daily_cost: number
   avg_speed_kmh: number
   status: "available" | "in_use" | "maintenance"
+  // Driver rules
+  driver_max_work_hours?: number
+  driver_break_after_hours?: number
+  driver_break_duration?: number
+  type?: string // Alias for vehicle_type
   created_at?: string
   updated_at?: string
 }
@@ -38,10 +46,20 @@ export interface Customer {
   lng: number
   demand_kg: number
   demand_pallet: number
-  demand_pallets?: number
+  demand_pallets?: number // Alias
+  demand_m3?: number
   priority: number
   assigned_depot_id?: string
   status: "active" | "inactive" | "pending"
+  // Time windows
+  time_window_start?: string
+  time_window_end?: string
+  // Service
+  service_duration?: number
+  service_duration_min?: number
+  // Vehicle requirements
+  required_vehicle_types?: string[]
+  business_type?: string
   created_at?: string
   updated_at?: string
 }

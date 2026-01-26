@@ -16,6 +16,7 @@ export interface Vehicle {
   depot_id: string
   plate: string
   vehicle_type: "kamyonet" | "kamyon_1" | "kamyon_2" | "tir" | "romork"
+  type?: string // Alias for vehicle_type
   capacity_pallets: number
   capacity_kg: number // Kullanılmayacak ama yapıda tutuluyor
   capacity_m3: number // Kullanılmayacak ama yapıda tutuluyor
@@ -44,10 +45,20 @@ export interface Customer {
   lng: number
   business_type: "MCD" | "IKEA" | "CHL" | "OPT" | "OTHER" | null // Business tipi eklendi
   service_duration_min: number // Business bazlı: MCD=60, IKEA=45, CHL=30, OPT=30, varsayılan=30
+  service_duration?: number // Alias for service_duration_min
   time_restrictions: string | null // Örn: "20:00 den önce verilemiyor" veya "08:00-19:00 arası verilemiyor"
+  // Time window aliases for VRP compatibility
+  time_window_start?: string | null
+  time_window_end?: string | null
   allowed_vehicle_types: ("kamyonet" | "kamyon_1" | "kamyon_2" | "tir" | "romork")[] | null
+  required_vehicle_types?: string[] | null // Alias for allowed_vehicle_types
   assigned_depot_id: string | null
   status: "pending" | "assigned" | "delivered"
+  // Demand fields for VRP compatibility
+  demand_kg?: number
+  demand_m3?: number
+  demand_pallets?: number
+  demand_pallet?: number
   created_at: string
   updated_at: string
   // Joined fields
