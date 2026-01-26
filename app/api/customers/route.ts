@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     const [customer] = await sql`
       INSERT INTO customers (
         id, name, address, city, district, lat, lng,
-        demand_pallet, assigned_depot_id, service_duration_minutes, status
+        demand_pallet, assigned_depot_id, service_duration_minutes, required_vehicle_type, status
       ) VALUES (
         ${data.id || `c-${Date.now()}`},
         ${data.name},
@@ -72,6 +72,7 @@ export async function POST(request: Request) {
         ${data.demand_pallet},
         ${data.assigned_depot_id || null},
         ${data.service_duration_min || data.service_duration_minutes || 45},
+        ${data.required_vehicle_type || null},
         'active'
       )
       RETURNING *
@@ -121,7 +122,8 @@ export async function PUT(request: Request) {
         lng = ${data.lng},
         demand_pallet = ${data.demand_pallet},
         assigned_depot_id = ${data.assigned_depot_id || null},
-        service_duration_minutes = ${data.service_duration_min || data.service_duration_minutes || 45}
+        service_duration_minutes = ${data.service_duration_min || data.service_duration_minutes || 45},
+        required_vehicle_type = ${data.required_vehicle_type || null}
       WHERE id = ${data.id}
       RETURNING *
     `

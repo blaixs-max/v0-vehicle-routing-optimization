@@ -124,6 +124,11 @@ export function clarkeWrightSavings(
     // Müşterilerin gerektirdiği araç tipleri
     const requiredVehicleTypes = new Set<string>()
     for (const customer of allCustomersInMerged) {
+      // Check single vehicle type requirement
+      if (customer?.requiredVehicleType) {
+        requiredVehicleTypes.add(customer.requiredVehicleType)
+      }
+      // Also check array format for backward compatibility
       if (customer?.requiredVehicleTypes && customer.requiredVehicleTypes.length > 0) {
         customer.requiredVehicleTypes.forEach((type) => requiredVehicleTypes.add(type))
       }
@@ -224,6 +229,11 @@ export function clarkeWrightSavings(
     const routeCustomers = route.customers.map((id) => customers.find((c) => c.id === id)).filter(Boolean)
     const requiredVehicleTypes = new Set<string>()
     for (const customer of routeCustomers) {
+      // Check single vehicle type requirement
+      if (customer?.requiredVehicleType) {
+        requiredVehicleTypes.add(customer.requiredVehicleType)
+      }
+      // Also check array format for backward compatibility
       if (customer?.requiredVehicleTypes && customer.requiredVehicleTypes.length > 0) {
         customer.requiredVehicleTypes.forEach((type) => requiredVehicleTypes.add(type))
       }
@@ -301,6 +311,7 @@ export function clarkeWrightOptimize(
     timeWindowStart: c.time_window_start,
     timeWindowEnd: c.time_window_end,
     requiredVehicleTypes: c.required_vehicle_types || [],
+    requiredVehicleType: c.required_vehicle_type || null,
   }))
 
   const vehicleConfigs: VehicleConfig[] = vehicles.map((v) => ({

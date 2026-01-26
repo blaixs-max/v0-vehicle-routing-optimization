@@ -17,6 +17,10 @@ export const customerSchema = z.object({
   lng: z.number().refine((val) => val !== 0, "Invalid longitude"),
   demand_pallet: z.number().min(0, "Demand must be non-negative"),
   depot_id: z.string().optional(),
+  required_vehicle_type: z.string().nullable().optional(),
+  service_duration_min: z.number().min(5).max(240).optional(),
+  service_duration_minutes: z.number().min(5).max(240).optional(),
+  assigned_depot_id: z.string().optional(),
 })
 
 export const customerArraySchema = z.array(customerSchema)

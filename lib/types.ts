@@ -59,6 +59,7 @@ export interface Customer {
   service_duration_min?: number
   // Vehicle requirements
   required_vehicle_types?: string[]
+  required_vehicle_type?: string | null // Single vehicle type requirement
   business_type?: string
   created_at?: string
   updated_at?: string
