@@ -1,7 +1,7 @@
 -- Adana Müşterileri için Siparişler
 -- Her müşteri için palet miktarlarına göre sipariş oluşturma
 
-INSERT INTO orders (id, customer_id, order_number, order_date, delivery_date, quantity_pallets, quantity_kg, status)
+INSERT INTO orders (id, customer_id, order_number, order_date, delivery_date, demand_pallet, priority, status)
 SELECT 
   'order-' || c.id,
   c.id,
@@ -9,7 +9,7 @@ SELECT
   CURRENT_DATE,
   CURRENT_DATE + INTERVAL '2 days',
   pallets.quantity,
-  pallets.quantity * 800,
+  'normal',
   'pending'
 FROM (VALUES
   ('McD Adana Galleria', 10),
