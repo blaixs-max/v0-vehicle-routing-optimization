@@ -498,12 +498,23 @@ async function optimizeWithRailway(
     })
     console.log("[v0] CRITICAL DEBUG - First customer being sent to Railway:", JSON.stringify(railwayRequest.customers[0]))
 
+    // OSRM URL'yi environment variable'dan veya default değerden al
+    const osrmUrl = process.env.OSRM_URL || process.env.NEXT_PUBLIC_OSRM_URL || 'https://router.project-osrm.org'
+    
+    // Railway request'e OSRM URL'yi ekle
+    const railwayRequestWithOsrm = {
+      ...railwayRequest,
+      osrm_url: osrmUrl
+    }
+    
+    console.log("[v0] OSRM URL being sent to Railway:", osrmUrl)
+    
     const railwayResponse = await fetch(`${process.env.RAILWAY_API_URL}/optimize`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(railwayRequest),
+      body: JSON.stringify(railwayRequestWithOsrm),
       signal: controller.signal,
     })
 
