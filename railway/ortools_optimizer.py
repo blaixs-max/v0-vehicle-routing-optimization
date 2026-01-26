@@ -386,15 +386,16 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         )
         
-        # Set reasonable timeout - 2 minutes should be enough
-        search_parameters.time_limit.seconds = 120
+        # Set extended timeout for long-distance routes (e.g., Adana to Izmir)
+        # Increased from 120s to 300s (5 minutes) for complex routing scenarios
+        search_parameters.time_limit.seconds = 300
         search_parameters.log_search = True
         
         # Allow solver to improve solution within time limit
         # Don't use solution_limit=1, it can cause premature termination
         
-        # LNS for refinement
-        search_parameters.lns_time_limit.seconds = 50
+        # LNS for refinement - also increased proportionally
+        search_parameters.lns_time_limit.seconds = 120
         
         print(f"[OR-Tools] Solving with PARALLEL_CHEAPEST_INSERTION + GLS (120s limit)...")
         print(f"[OR-Tools] About to call SolveWithParameters()...")
