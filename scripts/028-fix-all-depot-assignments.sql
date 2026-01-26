@@ -1,41 +1,46 @@
 -- Fix depot assignments for all customers
--- This ensures every customer has a valid depot_id
+-- This ensures every customer has a valid assigned_depot_id
 
--- First, let's see current depot IDs
--- Istanbul: depot-1
--- Ankara: depot-2  
--- Izmir: depot-3
-
--- Update customers with NULL depot_id based on their city/location
+-- First, let's check current state
+SELECT 'Before Update:' as status;
+SELECT city, COUNT(*) as customer_count, 
+       SUM(CASE WHEN assigned_depot_id IS NULL THEN 1 ELSE 0 END) as null_depot_count
+FROM customers
+GROUP BY city;
 
 -- Istanbul customers
 UPDATE customers 
-SET depot_id = 'depot-1'
-WHERE depot_id IS NULL 
-AND (address LIKE '%Istanbul%' OR address LIKE '%İstanbul%');
+SET assigned_depot_id = (SELECT id FROM depots WHERE city = 'İstanbul' LIMIT 1)
+WHERE assigned_depot_id IS NULL 
+AND city = 'İstanbul';
 
 -- Ankara customers
 UPDATE customers 
-SET depot_id = 'depot-2'
-WHERE depot_id IS NULL 
-AND address LIKE '%Ankara%';
+SET assigned_depot_id = (SELECT id FROM depots WHERE city = 'Ankara' LIMIT 1)
+WHERE assigned_depot_id IS NULL 
+AND city = 'Ankara';
 
 -- Izmir customers (including Adana region which is served by Izmir depot)
 UPDATE customers 
-SET depot_id = 'depot-3'
-WHERE depot_id IS NULL 
-AND (address LIKE '%İzmir%' OR address LIKE '%Izmir%' OR address LIKE '%Adana%');
+SET assigned_depot_id = (SELECT id FROM depots WHERE city = 'İzmir' LIMIT 1)
+WHERE assigned_depot_id IS NULL 
+AND city IN ('İzmir', 'Adana');
 
 -- Verify all customers now have a depot assigned
+SELECT 'After Update:' as status;
 SELECT 
-    depot_id,
-    COUNT(*) as customer_count,
-    STRING_AGG(DISTINCT SUBSTRING(address FROM '([^,]+)$'), ', ') as cities
-FROM customers 
-GROUP BY depot_id
-ORDER BY depot_id;
+    c.city,
+    d.name as depot_name,
+    d.city as depot_city,
+    COUNT(*) as customer_count
+FROM customers c
+LEFT JOIN depots d ON c.assigned_depot_id = d.id
+GROUP BY c.city, d.name, d.city
+ORDER BY c.city;
 
--- Check if any customers still have NULL depot_id
-SELECT COUNT(*) as null_depot_count
+-- Check if any customers still have NULL assigned_depot_id
+SELECT 'Customers without depot:' as status;
+SELECT COUNT(*) as null_depot_count, 
+       STRING_AGG(name, ', ') as customer_names
 FROM customers 
-WHERE depot_id IS NULL;
+WHERE assigned_depot_id IS NULL;
