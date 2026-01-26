@@ -3,17 +3,17 @@
 
 DO $$
 DECLARE
-    izmir_depot_id INTEGER;
+    izmir_depot_id UUID;
     updated_count INTEGER;
 BEGIN
     -- İzmir deposunun ID'sini al
     SELECT id INTO izmir_depot_id
     FROM depots
-    WHERE city = 'İzmir'
+    WHERE city = 'Izmir'
     LIMIT 1;
 
     IF izmir_depot_id IS NULL THEN
-        RAISE EXCEPTION 'İzmir depot not found! Please create it first.';
+        RAISE EXCEPTION 'Izmir depot not found! Please create it first.';
     END IF;
 
     RAISE NOTICE 'İzmir depot ID: %', izmir_depot_id;
