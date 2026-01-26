@@ -254,6 +254,34 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         print(f"[OR-Tools] Capacity dimension added")
         
+        # Vehicle type constraints
+        print(f"[OR-Tools] ===== ADDING VEHICLE TYPE CONSTRAINTS =====")
+        for customer_idx, customer in enumerate(customers):
+            required_type = customer.get("required_vehicle_type")
+            if required_type:
+                node_idx = customer_idx + 1  # +1 because depot is at index 0
+                print(f"[OR-Tools] Customer {customer['name']} requires vehicle type: {required_type}")
+                
+                # Map vehicle type names to integers
+                type_mapping = {
+                    "kamyonet": 0,
+                    "kamyon_1": 1,
+                    "kamyon_2": 2,
+                    "tir": 3,
+                    "romork": 4
+                }
+                
+                required_type_int = type_mapping.get(required_type.lower())
+                if required_type_int is not None:
+                    # Only allow vehicles with matching type to visit this node
+                    for vehicle_id in range(num_vehicles):
+                        vehicle_type_int = vehicles[vehicle_id].get("type", 0)
+                        if vehicle_type_int != required_type_int:
+                            # Disallow this vehicle from visiting this customer
+                            index = manager.NodeToIndex(node_idx)
+                            routing.VehicleVar(index).RemoveValue(vehicle_id)
+                            print(f"[OR-Tools]   Disallowing vehicle {vehicle_id} (type {vehicle_type_int}) for customer {customer['name']}")
+        
         print(f"[OR-Tools] ===== TIME DIMENSION: DISABLED =====")
         print(f"[OR-Tools] Using DISTANCE-ONLY optimization (no time constraints)")
         
