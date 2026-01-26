@@ -7,15 +7,15 @@ ALTER TABLE vehicles DROP CONSTRAINT IF EXISTS vehicles_vehicle_type_check;
 ALTER TABLE vehicles ADD CONSTRAINT vehicles_vehicle_type_check 
   CHECK (vehicle_type IN ('kamyon', 'kamyon_1', 'kamyon_2', 'tir', 'kamyonet', 'romork'));
 
--- Get İzmir depot ID
+-- Get Izmir depot ID
 DO $$
 DECLARE
-  izmir_depot_id INTEGER;
+  izmir_depot_id TEXT;
 BEGIN
-  SELECT id INTO izmir_depot_id FROM depots WHERE name = 'İzmir Ege Depo' LIMIT 1;
+  SELECT id INTO izmir_depot_id FROM depots WHERE name = 'Izmir Depo' LIMIT 1;
   
   IF izmir_depot_id IS NULL THEN
-    RAISE EXCEPTION 'İzmir Ege Depo not found';
+    RAISE EXCEPTION 'Izmir Depo not found';
   END IF;
 
   -- Add 5x Kamyon Tip 2 (18 pallet, 12000kg capacity)
@@ -52,6 +52,6 @@ SELECT
   SUM(capacity_pallets) as total_capacity
 FROM vehicles v
 JOIN depots d ON v.depot_id = d.id
-WHERE d.name = 'İzmir Ege Depo'
+WHERE d.name = 'Izmir Depo'
 GROUP BY vehicle_type
 ORDER BY vehicle_type;
