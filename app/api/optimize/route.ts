@@ -476,7 +476,9 @@ async function optimizeWithRailway(
     customers: customersWithOrders.map((c) => {
       const order = orderMap.get(c.id)!
       const depotId = assignDepotToCustomer(c)
-      console.log(`[v0] Customer ${c.id}: assigned_depot_id="${depotId}"`)
+      const demandRaw = order.demand_pallet || order.pallets || 10
+      const demandParsed = parseInt(demandRaw, 10)
+      console.log(`[v0] Customer ${c.id}: assigned_depot_id="${depotId}", demand_raw="${demandRaw}" (type: ${typeof demandRaw}), demand_parsed=${demandParsed}`)
       return {
         id: c.id,
         name: c.name || c.company_name || `Müşteri ${c.id}`,
@@ -485,7 +487,7 @@ async function optimizeWithRailway(
           lat: c.lat,
           lng: c.lng,
         },
-        demand_pallets: order.demand_pallet || order.pallets || 10,
+        demand_pallets: demandParsed,
         priority: order.priority || 'normal',
         business_type: c.business_type || "retail",
         service_duration: c.service_duration_minutes || serviceDurationMinutes,
@@ -503,7 +505,7 @@ async function optimizeWithRailway(
       return {
         id: v.id,
         type: vehicleType,
-        capacity_pallets: v.capacity_pallet || v.capacity_pallets || 12,
+        capacity_pallets: parseInt(v.capacity_pallet || v.capacity_pallets || 12, 10),
         fuel_consumption: v.fuel_consumption || 25,
         vehicle_type_name: v.vehicle_type, // Send type name for matching
         plate: v.plate || v.license_plate || `${v.id}`, // Send plate to Railway
