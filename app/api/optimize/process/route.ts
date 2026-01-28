@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
       const customerIds = requestData.orders.map((o: any) => o.customerId)
       const customersResult = await sql`
-        SELECT id, name, lat, lng, assigned_depot_id, service_duration_min, has_time_constraint, 
+        SELECT id, name, lat, lng, service_duration_min, has_time_constraint, 
                constraint_start_time, constraint_end_time, required_vehicle_type
         FROM customers
         WHERE id = ANY(${customerIds})
@@ -82,7 +82,6 @@ export async function POST(request: Request) {
           return {
             id: c.id,
             name: c.name,
-            depot_id: c.assigned_depot_id || null,
             location: {
               lat: Number.parseFloat(c.lat),
               lng: Number.parseFloat(c.lng),
