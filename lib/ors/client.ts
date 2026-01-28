@@ -86,10 +86,6 @@ export class ORSClient {
       vehicles: request.vehicles,
       options: {
         g: true, // geometry flag
-        // Minimize total distance traveled (primary objective)
-        c: {
-          minimize: 'distance'
-        }
       },
     }
     
