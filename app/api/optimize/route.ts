@@ -60,7 +60,7 @@ async function getRouteGeometry(coordinates: [number, number][]): Promise<string
   if (coordinates.length < 2) return ""
 
   try {
-    const response = await fetch(`https://api.openrouteservice.org/v2/directions/driving-hgv/geojson`, {
+    const response = await fetch(`https://api.openrouteservice.org/v2/directions/driving-car/geojson`, {
       method: "POST",
       headers: {
         Authorization: process.env.ORS_API_KEY || "",
@@ -213,7 +213,7 @@ async function optimizeWithORS(
 
         return {
           id: index + 1,
-          profile: "driving-hgv" as const,
+          profile: "driving-car" as const, // Changed from driving-hgv - better for long distances (400+ km)
           start: [depotLng, depotLat] as [number, number],
           end: [depotLng, depotLat] as [number, number],
           capacity: [capacity],
@@ -312,7 +312,7 @@ async function optimizeWithORS(
           } else {
             // ORS Directions API ile gerçek rota geometrisi al
             try {
-              geometryPoints = await client.getRouteGeometry(routePoints, "driving-hgv")
+              geometryPoints = await client.getRouteGeometry(routePoints, "driving-car")
             } catch (e) {
               // Directions API hatasi - routePoints kullan
             }
