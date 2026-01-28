@@ -57,7 +57,8 @@ def get_osrm_distance_matrix(locations: List[tuple], osrm_url: str = None) -> Li
         print(f"[OR-Tools] OSRM Table API çağrılıyor: {len(locations)} nokta")
         print(f"[OR-Tools] OSRM URL: {osrm_url}")
         
-        response = requests.get(url, timeout=30)
+        # Increased timeout to 60 seconds for long-distance routes (e.g., Adana to Izmir 600+ km)
+        response = requests.get(url, timeout=60)
         response.raise_for_status()
         
         data = response.json()
@@ -376,9 +377,9 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         
-        # Use PATH_CHEAPEST_ARC for faster initial solution (better for long-distance routes)
+        # Use PARALLEL_CHEAPEST_INSERTION for fast initial solution
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+            routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
         )
         
         # Use guided local search for optimization
@@ -386,18 +387,18 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         )
         
-        # Set extended timeout for long-distance routes (e.g., Adana to Izmir: 400+ km)
-        # Increased to 600s (10 minutes) for complex long-distance routing scenarios
-        search_parameters.time_limit.seconds = 600
+        # Set extended timeout for long-distance routes (e.g., Adana to Izmir)
+        # Increased from 120s to 300s (5 minutes) for complex routing scenarios
+        search_parameters.time_limit.seconds = 300
         search_parameters.log_search = True
         
         # Allow solver to improve solution within time limit
         # Don't use solution_limit=1, it can cause premature termination
         
         # LNS for refinement - also increased proportionally
-        search_parameters.lns_time_limit.seconds = 240
+        search_parameters.lns_time_limit.seconds = 120
         
-        print(f"[OR-Tools] Solving with PATH_CHEAPEST_ARC + GLS (600s timeout)...")
+        print(f"[OR-Tools] Solving with PARALLEL_CHEAPEST_INSERTION + GLS (300s limit)...")
         print(f"[OR-Tools] About to call SolveWithParameters()...")
         
         solution = routing.SolveWithParameters(search_parameters)

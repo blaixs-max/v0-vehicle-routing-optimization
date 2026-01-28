@@ -270,12 +270,28 @@ export function OptimizationPanel() {
     } catch (error: any) {
       console.error("[v0] Optimization error:", error)
       setOptimizing(false)
-      setOptimizeError(error instanceof Error ? error.message : "Bilinmeyen hata")
-      toast({
-        title: "Hata",
-        description: error instanceof Error ? error.message : "Bilinmeyen hata",
-        variant: "destructive",
-      })
+      
+      const errorMessage = error instanceof Error ? error.message : "Bilinmeyen hata"
+      const isTimeoutError = errorMessage.includes("TIMEOUT") || errorMessage.includes("timeout")
+      
+      // If OR-Tools timeout and algorithm is ortools, suggest switching to VROOM
+      if (isTimeoutError && algorithm === "ortools") {
+        setOptimizeError(
+          `${errorMessage}\n\nÖneri: Uzun mesafeli rotalar için "ORS/VROOM" algoritmasını deneyin. Daha hızlıdır.`
+        )
+        toast({
+          title: "Timeout Hatası",
+          description: "OR-Tools timeout verdi. ORS/VROOM algoritmasını deneyin (Algoritma seçiminden değiştirebilirsiniz)",
+          variant: "destructive",
+        })
+      } else {
+        setOptimizeError(errorMessage)
+        toast({
+          title: "Hata",
+          description: errorMessage,
+          variant: "destructive",
+        })
+      }
     }
   }
 
@@ -412,21 +428,21 @@ export function OptimizationPanel() {
                     <SelectItem value="ortools">
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4 text-green-500" />
-                        <span>OR-Tools (Önerilen)</span>
+                        <span>OR-Tools (Yakın mesafe)</span>
                       </div>
                     </SelectItem>
                     <SelectItem value="ors">
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4 text-blue-500" />
-                        <span>ORS/VROOM</span>
+                        <span>ORS/VROOM (Uzun mesafe önerilen)</span>
                       </div>
                     </SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   {algorithm === "ortools"
-                    ? "Mesafe ve kapasite optimizasyonu (Time constraints test için kapalı)"
-                    : "Hızlı çözüm, sınırlı kısıt desteği"}
+                    ? "En iyi optimizasyon, kısa-orta mesafe için (Adana-İzmir gibi 600+ km rotalar için VROOM önerilir)"
+                    : "Hızlı çözüm, uzun mesafe rotalar için uygun"}
                 </p>
               </div>
 
