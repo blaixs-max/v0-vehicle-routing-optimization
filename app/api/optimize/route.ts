@@ -177,29 +177,53 @@ async function optimizeWithORS(
 
       if (batchCustomers.length === 0) continue
 
-      const jobs = batchCustomers.map((customer, index) => ({
-        id: index + 1,
-        location: [customer.lng, customer.lat] as [number, number],
-        service: 900,
-        amount: [customer.demand_pallets || customer.demand_pallet || 1],
-      }))
+      const jobs = batchCustomers.map((customer, index) => {
+        const custLng = parseFloat(String(customer.lng))
+        const custLat = parseFloat(String(customer.lat))
+        
+        if (isNaN(custLng) || isNaN(custLat)) {
+          console.error(`[v0] Customer ${customer.id} has invalid coordinates: lng=${customer.lng}, lat=${customer.lat}`)
+          throw new Error(`Customer ${customer.name} has invalid coordinates`)
+        }
+        
+        return {
+          id: index + 1,
+          location: [custLng, custLat] as [number, number],
+          service: 900,
+          amount: [customer.demand_pallets || customer.demand_pallet || 1],
+        }
+      })
 
       const orsVehicles = vehicleBatch.map((vehicle, index) => {
         const capacity = Math.floor(
           (vehicle.capacity_pallet || vehicle.capacity_pallets || 12) * (options.vehicleCapacityUtilization || 0.9),
         )
 
+        // Parse coordinates to ensure they are numbers
+        const depotLng = parseFloat(String(depot.lng))
+        const depotLat = parseFloat(String(depot.lat))
+        
+        if (isNaN(depotLng) || isNaN(depotLat)) {
+          throw new Error(`Depot ${depot.name} has invalid coordinates: lng=${depot.lng}, lat=${depot.lat}`)
+        }
+
+        console.log(`[v0] ORS Vehicle ${index + 1}: depot=${depot.name}, start=[${depotLng}, ${depotLat}]`)
+
         return {
           id: index + 1,
           profile: "driving-hgv" as const,
-          start: [depot.lng, depot.lat] as [number, number],
-          end: [depot.lng, depot.lat] as [number, number],
+          start: [depotLng, depotLat] as [number, number],
+          end: [depotLng, depotLat] as [number, number],
           capacity: [capacity],
           time_window: options.maxRouteTimeMin ? ([0, options.maxRouteTimeMin * 60] as [number, number]) : undefined,
         }
       })
 
       try {
+        console.log(`[v0] ORS Request - Depot: ${depot.name}, Jobs: ${jobs.length}, Vehicles: ${orsVehicles.length}`)
+        console.log(`[v0] ORS First vehicle start:`, orsVehicles[0]?.start)
+        console.log(`[v0] ORS First job location:`, jobs[0]?.location)
+        
         const response = await client.optimize({
           jobs,
           vehicles: orsVehicles,
