@@ -387,14 +387,11 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         )
         
         # Increase timeout significantly for complex problems
-        search_parameters.time_limit.seconds = 300  # 5 minutes for better convergence
+        search_parameters.time_limit.seconds = 180  # 3 minutes for better convergence
         search_parameters.log_search = True
         
         # Accept first feasible solution - don't optimize further
         search_parameters.solution_limit = 1
-        
-        # Add more flexibility to help solver find solutions
-        search_parameters.lns_time_limit.seconds = 100
         
         print(f"[OR-Tools] Solving with PARALLEL_CHEAPEST_INSERTION + GLS (60s limit)...")
         print(f"[OR-Tools] About to call SolveWithParameters()...")
