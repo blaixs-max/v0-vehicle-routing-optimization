@@ -96,6 +96,7 @@ async function optimizeWithORS(
   depots: Depot[],
   vehicles: Vehicle[],
   customers: Customer[],
+  orders: any[],
   options: {
     fuelPricePerLiter: number
     maxRouteDistanceKm?: number
@@ -193,14 +194,20 @@ async function optimizeWithORS(
           throw new Error(`Customer ${customer.name} has invalid coordinates`)
         }
         
+        // Get real demand from orders
+        const customerOrders = orders.filter((o: any) => o.customer_id === customer.id)
+        const totalDemand = customerOrders.reduce((sum: number, o: any) => sum + (o.demand_pallets || 1), 0)
+        
         // Use serviceDuration from options (in minutes), convert to seconds for ORS API
-        const serviceTimeSeconds = (options.serviceDurationMinutes || 45) * 60
+        const serviceTimeSeconds = (options.serviceDurationMinutes || 15) * 60 // Changed default to 15 min
+        
+        console.log(`[v0] Customer ${customer.name}: ${totalDemand} pallets, service: ${serviceTimeSeconds}s`)
         
         return {
           id: index + 1,
           location: [custLng, custLat] as [number, number],
           service: serviceTimeSeconds,
-          amount: [customer.demand_pallets || customer.demand_pallet || 1],
+          amount: [totalDemand],
         }
       })
 
@@ -226,7 +233,8 @@ async function optimizeWithORS(
           start: [depotLng, depotLat] as [number, number],
           end: [depotLng, depotLat] as [number, number],
           capacity: [capacity],
-          time_window: options.maxRouteTimeMin ? ([0, options.maxRouteTimeMin * 60] as [number, number]) : undefined,
+          // Removed time_window constraint - it was preventing long-distance routes (Ankara-Adana 12+ hours)
+          // time_window: options.maxRouteTimeMin ? ([0, options.maxRouteTimeMin * 60] as [number, number]) : undefined,
         }
       })
 
@@ -855,7 +863,7 @@ export async function POST(req: NextRequest) {
         maxRouteTimeMin: maxRouteTime,
       })
   } else {
-    optimization = await optimizeWithORS(selectedDepots, availableVehicles, selectedCustomers, {
+    optimization = await optimizeWithORS(selectedDepots, availableVehicles, selectedCustomers, orders || [], {
       fuelPricePerLiter: fuelPrice,
       maxRouteDistanceKm: maxRouteDistance,
       maxRouteTimeMin: maxRouteTime,
