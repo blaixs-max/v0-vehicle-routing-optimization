@@ -2,17 +2,27 @@
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { useDepotStore, DEPOTS } from "@/lib/depot-store"
+import { useDepotStore } from "@/lib/depot-store"
 import { useRouter } from "next/navigation"
-import { Building2, MapPin, Package } from "lucide-react"
+import { Building2, MapPin, Package, Loader2 } from "lucide-react"
+import { useDepots } from "@/lib/hooks/use-depot-data"
 
 export default function SelectDepotPage() {
   const router = useRouter()
   const setSelectedDepot = useDepotStore((state) => state.setSelectedDepot)
+  const { data: depots, isLoading } = useDepots()
 
   const handleDepotSelect = (depotId: string) => {
     setSelectedDepot(depotId)
     router.push("/")
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
@@ -29,7 +39,7 @@ export default function SelectDepotPage() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
-          {DEPOTS.map((depot) => (
+          {depots?.map((depot) => (
             <Card
               key={depot.id}
               className="relative overflow-hidden border-2 hover:border-primary hover:shadow-lg transition-all cursor-pointer group"
@@ -46,7 +56,9 @@ export default function SelectDepotPage() {
                     <MapPin className="h-4 w-4" />
                     <span>{depot.city}</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">{depot.description}</p>
+                  {depot.address && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">{depot.address}</p>
+                  )}
                 </div>
 
                 <Button className="w-full" size="lg">

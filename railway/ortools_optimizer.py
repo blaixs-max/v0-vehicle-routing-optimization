@@ -336,64 +336,31 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         # In production, consider implementing this as a post-optimization filter or
         # using OR-Tools allowed/forbidden arc callbacks with proper slack
         
-        # TIME DIMENSION: Add time constraints (max 600 minutes per vehicle)
-        print(f"[OR-Tools] ===== TIME DIMENSION: ENABLED =====")
-        print(f"[OR-Tools] Maximum route duration: 600 minutes (10 hours)")
-        
-        # Time callback: distance/speed + service time
-        def time_callback(from_index, to_index):
-            from_node = manager.IndexToNode(from_index)
-            to_node = manager.IndexToNode(to_index)
-            
-            travel_distance_m = distance_matrix[from_node][to_node]
-            travel_time_min = (travel_distance_m / 1000) / 60 * 60  # Assume 60 km/h average speed
-            
-            # Add service time at destination (if not depot)
-            service_time = service_times_list[to_node] if to_node > 0 else 0
-            
-            return int(travel_time_min + service_time)
-        
-        time_callback_index = routing.RegisterTransitCallback(time_callback)
-        
-        # Add time dimension with 600-minute max per vehicle
-        # Allow 60 minutes of slack time for flexibility
-        routing.AddDimension(
-            time_callback_index,
-            60,  # 60 minutes slack time for traffic/delays
-            660,  # maximum 660 minutes per vehicle (600 + slack)
-            True,  # start cumul to zero
-            'Time'
-        )
-        
-        time_dimension = routing.GetDimensionOrDie('Time')
-        
-        # Set maximum time for each vehicle (600 target + 60 slack = 660 max)
-        for vehicle_id in range(num_vehicles):
-            end_index = routing.End(vehicle_id)
-            time_dimension.CumulVar(end_index).SetMax(660)  # 660 dakika max (600 + slack)
-        
-        print(f"[OR-Tools] Time dimension added with 600-minute limit per vehicle")
+        # TIME DIMENSION: DISABLED for better feasibility
+        print(f"[OR-Tools] ===== TIME DIMENSION: DISABLED =====")
+        print(f"[OR-Tools] Time constraints removed to prioritize finding feasible solutions")
+        print(f"[OR-Tools] Optimization will focus on capacity and distance minimization")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         
-        # Use PARALLEL_CHEAPEST_INSERTION for better multi-vehicle distribution
+        # Use PATH_CHEAPEST_ARC - fastest initial solution strategy
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         )
         
-        # Local search metaheuristic for improvement
+        # Use AUTOMATIC for local search - OR-Tools chooses best strategy
         search_parameters.local_search_metaheuristic = (
-            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+            routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC
         )
         
-        # Increase timeout for time-constrained problems (60s should be enough)
-        search_parameters.time_limit.seconds = 60
+        # Increase timeout to 5 minutes for complex problems
+        search_parameters.time_limit.seconds = 300
         search_parameters.log_search = True
         
-        # Allow some flexibility - solution doesn't need to be perfect
-        search_parameters.solution_limit = 1  # Accept first feasible solution
+        # Accept first feasible solution quickly
+        search_parameters.solution_limit = 1
         
-        print(f"[OR-Tools] Solving with PARALLEL_CHEAPEST_INSERTION + GLS (60s limit)...")
+        print(f"[OR-Tools] Solving with PATH_CHEAPEST_ARC + AUTOMATIC metaheuristic (300s limit)...")
         print(f"[OR-Tools] About to call SolveWithParameters()...")
         
         solution = routing.SolveWithParameters(search_parameters)

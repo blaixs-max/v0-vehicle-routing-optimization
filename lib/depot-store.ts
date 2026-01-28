@@ -19,24 +19,3 @@ export const useDepotStore = create<DepotStore>()(
     }
   )
 )
-
-export const DEPOTS = [
-  {
-    id: "depot-1",
-    name: "İstanbul Depo",
-    city: "Istanbul",
-    description: "Avrupa Yakası Merkez Depo",
-  },
-  {
-    id: "depot-2",
-    name: "Ankara Depo",
-    city: "Ankara",
-    description: "İç Anadolu Bölge Deposu",
-  },
-  {
-    id: "depot-3",
-    name: "İzmir Depo",
-    city: "Izmir",
-    description: "Ege Bölgesi Merkez Depo",
-  },
-] as const

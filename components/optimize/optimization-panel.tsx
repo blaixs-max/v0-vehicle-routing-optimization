@@ -132,14 +132,15 @@ export function OptimizationPanel() {
       return
     }
 
-    // Fetch ONLY pending orders (not assigned to any route yet)
+    // Fetch ONLY pending orders (not assigned to any route yet) for selected depot
     let pendingOrderCustomerIds: string[] = []
     try {
-      const ordersResponse = await fetch("/api/orders?status=pending")
+      const depotFilter = selectedDepotId ? `&depot_id=${selectedDepotId}` : ''
+      const ordersResponse = await fetch(`/api/orders?status=pending${depotFilter}`)
       if (ordersResponse.ok) {
         const orders = await ordersResponse.json()
         pendingOrderCustomerIds = orders.map((o: any) => o.customer_id).filter(Boolean)
-        console.log("[v0] Pending orders found:", pendingOrderCustomerIds.length)
+        console.log("[v0] Pending orders found for depot:", pendingOrderCustomerIds.length)
       }
     } catch (error) {
       console.error("[v0] Failed to fetch orders for filtering:", error)
@@ -505,7 +506,7 @@ export function OptimizationPanel() {
                     value={[maxRouteDuration]}
                     onValueChange={([v]) => setMaxRouteDuration(v)}
                     min={60}
-                    max={720}
+                    max={1200}
                     step={30}
                     className="flex-1"
                   />
@@ -602,7 +603,7 @@ export function OptimizationPanel() {
             {optimizing ? (
               <>
                 <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
-                Optimize Ediliyor... %{progress}
+                Optimize Ediliyor... (Maks 5 dk) %{progress}
               </>
             ) : (
               <>

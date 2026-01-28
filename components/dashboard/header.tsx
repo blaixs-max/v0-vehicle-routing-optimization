@@ -3,7 +3,8 @@
 import { Bell, Search, Sun, Moon, Plus, RefreshCw, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useDepotStore, DEPOTS } from "@/lib/depot-store"
+import { useDepotStore } from "@/lib/depot-store"
+import { useDepots } from "@/lib/hooks/use-depot-data"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,7 +19,8 @@ import { useEffect, useState } from "react"
 export function DashboardHeader() {
   const [isDark, setIsDark] = useState(false)
   const selectedDepotId = useDepotStore((state) => state.selectedDepotId)
-  const selectedDepot = DEPOTS.find((d) => d.id === selectedDepotId)
+  const { data: depots } = useDepots()
+  const selectedDepot = depots?.find((d) => d.id === selectedDepotId)
 
   useEffect(() => {
     const isDarkMode = document.documentElement.classList.contains("dark")

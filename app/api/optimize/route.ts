@@ -533,7 +533,7 @@ async function optimizeWithRailway(
 
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 60000)
+    const timeoutId = setTimeout(() => controller.abort(), 330000) // 5.5 min timeout for Railway (300s + 30s buffer)
 
     console.log("[v0] Calling Railway API:", process.env.RAILWAY_API_URL)
     console.log("[v0] Request body sample:", {
@@ -623,10 +623,10 @@ async function optimizeWithRailway(
       const vehicleId = route.vehicle_id || `vehicle-${index}`
       const routeId = `route-${Date.now()}-${vehicleId}`
       
-      // Validate duration - should not exceed 600 minutes
+      // Validate duration - should not exceed 1200 minutes (20 hours)
       const calculatedDuration = route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0
-      if (calculatedDuration > 600) {
-        console.warn(`[v0] WARNING: Route ${vehicleId} has duration ${calculatedDuration} min (>600 min limit!)`)
+      if (calculatedDuration > 1200) {
+        console.warn(`[v0] WARNING: Route ${vehicleId} has duration ${calculatedDuration} min (>1200 min limit!)`)
         console.warn(`[v0] Route details: distance=${route.distance_km}km, stops=${route.stops?.length}`)
       }
       
@@ -774,7 +774,7 @@ export async function POST(req: NextRequest) {
       algorithm = "ortools",
       fuelPrice = 47.5,
       maxRouteDistance,
-      maxRouteTime = 600,
+      maxRouteTime = 1200,
     } = body
     
     console.log("[v0] DEBUG: requestCustomers[0]:", JSON.stringify(requestCustomers?.[0], null, 2))

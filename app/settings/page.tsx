@@ -26,7 +26,8 @@ import {
   Building2,
 } from "lucide-react"
 import { OSRM_CONFIG, VROOM_CONFIG, VEHICLE_TYPES } from "@/lib/constants"
-import { useDepotStore, DEPOTS } from "@/lib/depot-store"
+import { useDepotStore } from "@/lib/depot-store"
+import { useDepots } from "@/lib/hooks/use-depot-data"
 
 export default function SettingsPage() {
   const { showToast } = useToast()
@@ -34,7 +35,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false) // Declare the saved variable
   const { selectedDepotId, setSelectedDepot } = useDepotStore()
-  const selectedDepot = DEPOTS.find((d) => d.id === selectedDepotId)
+  const { data: depots } = useDepots()
+  const selectedDepot = depots?.find((d) => d.id === selectedDepotId)
 
   // General settings state
   const [settings, setSettings] = useState({
@@ -208,7 +210,7 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">
-                  {DEPOTS.map((depot) => (
+                  {depots?.map((depot) => (
                     <button
                       key={depot.id}
                       type="button"
