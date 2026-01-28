@@ -376,27 +376,27 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         
-        # Use PARALLEL_CHEAPEST_INSERTION for fast initial solution
+        # Use AUTOMATIC for best strategy selection OR PARALLEL_CHEAPEST_INSERTION
         search_parameters.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
+            routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC
         )
         
-        # Use guided local search for optimization
+        # Use simpler local search for faster convergence
         search_parameters.local_search_metaheuristic = (
-            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+            routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC
         )
         
-        # Set reasonable timeout - 2 minutes should be enough
-        search_parameters.time_limit.seconds = 120
+        # Increase timeout significantly for complex problems
+        search_parameters.time_limit.seconds = 300  # 5 minutes for better convergence
         search_parameters.log_search = True
         
-        # Allow solver to improve solution within time limit
-        # Don't use solution_limit=1, it can cause premature termination
+        # Accept first feasible solution - don't optimize further
+        search_parameters.solution_limit = 1
         
-        # LNS for refinement
-        search_parameters.lns_time_limit.seconds = 50
+        # Add more flexibility to help solver find solutions
+        search_parameters.lns_time_limit.seconds = 100
         
-        print(f"[OR-Tools] Solving with PARALLEL_CHEAPEST_INSERTION + GLS (120s limit)...")
+        print(f"[OR-Tools] Solving with PARALLEL_CHEAPEST_INSERTION + GLS (60s limit)...")
         print(f"[OR-Tools] About to call SolveWithParameters()...")
         
         solution = routing.SolveWithParameters(search_parameters)
