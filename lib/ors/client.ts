@@ -81,27 +81,37 @@ export class ORSClient {
   }
 
   async optimize(request: ORSOptimizationRequest): Promise<ORSOptimizationResponse> {
+    const requestBody = {
+      jobs: request.jobs,
+      vehicles: request.vehicles,
+      options: {
+        g: true, // geometry flag
+      },
+    }
+    
+    console.log(`[v0] ORS API Request: ${request.jobs.length} jobs, ${request.vehicles.length} vehicles`)
+    console.log(`[v0] ORS First vehicle:`, JSON.stringify(request.vehicles[0], null, 2))
+    console.log(`[v0] ORS First job:`, JSON.stringify(request.jobs[0], null, 2))
+    
     const response = await fetch(`${ORS_API_URL}/optimization`, {
       method: "POST",
       headers: {
         Authorization: this.apiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        jobs: request.jobs,
-        vehicles: request.vehicles,
-        options: {
-          g: true, // geometry flag
-        },
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
       const errorText = await response.text()
+      console.error(`[v0] ORS API Error Response:`, errorText)
       throw new Error(`ORS Optimization API hatasi: ${response.status} - ${errorText}`)
     }
 
-    return response.json()
+    const responseData = await response.json()
+    console.log(`[v0] ORS API Success: ${responseData.routes?.length || 0} routes generated`)
+    
+    return responseData
   }
 
   async getMatrix(

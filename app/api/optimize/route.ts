@@ -148,7 +148,9 @@ async function optimizeWithORS(
     // Bu depoya ait araçları al
     let depotVehicles = availableVehicles.filter((v) => v.depot_id === depot.id)
     if (depotVehicles.length === 0) {
-      depotVehicles = availableVehicles.filter((v) => !allRoutes.some((r) => r.vehicleId === v.id)).slice(0, 3)
+      // Use all available vehicles, not just 3
+      depotVehicles = availableVehicles.filter((v) => !allRoutes.some((r) => r.vehicleId === v.id))
+      console.log(`[v0] Using ${depotVehicles.length} vehicles for depot ${depot.name}`)
     }
 
     if (depotVehicles.length === 0) {
@@ -229,6 +231,15 @@ async function optimizeWithORS(
           vehicles: orsVehicles,
           geometry: true,
         })
+
+        console.log(`[v0] ORS Response: ${response.routes?.length || 0} routes, ${response.unassigned?.length || 0} unassigned`)
+        if ((response.unassigned?.length || 0) > 0) {
+          console.log(`[v0] ORS Unassigned jobs:`, response.unassigned)
+        }
+        if ((response.routes?.length || 0) === 0) {
+          console.log(`[v0] WARNING: ORS returned 0 routes! This means optimization failed.`)
+          console.log(`[v0] ORS Response summary:`, JSON.stringify(response.summary || {}, null, 2))
+        }
 
         const assignedCustomerIndices = new Set<number>()
 
