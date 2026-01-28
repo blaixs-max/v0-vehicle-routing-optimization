@@ -603,7 +603,7 @@ export function OptimizationPanel() {
             {optimizing ? (
               <>
                 <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
-                Optimize Ediliyor... %{progress}
+                Optimize Ediliyor... (Maks 5 dk) %{progress}
               </>
             ) : (
               <>

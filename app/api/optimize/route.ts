@@ -533,7 +533,7 @@ async function optimizeWithRailway(
 
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 180000)
+    const timeoutId = setTimeout(() => controller.abort(), 330000) // 5.5 min timeout for Railway (300s + 30s buffer)
 
     console.log("[v0] Calling Railway API:", process.env.RAILWAY_API_URL)
     console.log("[v0] Request body sample:", {
