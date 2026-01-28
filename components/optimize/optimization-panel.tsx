@@ -132,14 +132,15 @@ export function OptimizationPanel() {
       return
     }
 
-    // Fetch ONLY pending orders (not assigned to any route yet)
+    // Fetch ONLY pending orders (not assigned to any route yet) for selected depot
     let pendingOrderCustomerIds: string[] = []
     try {
-      const ordersResponse = await fetch("/api/orders?status=pending")
+      const depotFilter = selectedDepotId ? `&depot_id=${selectedDepotId}` : ''
+      const ordersResponse = await fetch(`/api/orders?status=pending${depotFilter}`)
       if (ordersResponse.ok) {
         const orders = await ordersResponse.json()
         pendingOrderCustomerIds = orders.map((o: any) => o.customer_id).filter(Boolean)
-        console.log("[v0] Pending orders found:", pendingOrderCustomerIds.length)
+        console.log("[v0] Pending orders found for depot:", pendingOrderCustomerIds.length)
       }
     } catch (error) {
       console.error("[v0] Failed to fetch orders for filtering:", error)
