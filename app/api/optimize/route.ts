@@ -153,10 +153,12 @@ async function optimizeWithORS(
       console.log(`[v0] Using ${depotVehicles.length} vehicles for depot ${depot.name}`)
     }
 
-    if (depotVehicles.length === 0) {
-      allUnassigned.push(...depotCustomers.map((c) => c.id))
-      continue
-    }
+    // Sort vehicles by capacity (smallest first) - fill small vehicles first for better bin packing
+    depotVehicles.sort((a, b) => {
+      const capA = a.capacity_pallet || a.capacity_pallets || 12
+      const capB = b.capacity_pallet || b.capacity_pallets || 12
+      return capA - capB
+    })
 
     // Araçları 3'erli gruplara böl (ORS limiti)
     const vehicleBatches: Vehicle[][] = []
@@ -170,12 +172,14 @@ async function optimizeWithORS(
     for (const vehicleBatch of vehicleBatches) {
       if (remainingCustomers.length === 0) break
 
+      // Calculate total batch capacity with 100% utilization for maximum load per vehicle
       const batchCapacity = vehicleBatch.reduce((sum, v) => {
-        const cap = (v.capacity_pallet || v.capacity_pallets || 12) * (options.vehicleCapacityUtilization || 0.9)
+        const cap = (v.capacity_pallet || v.capacity_pallets || 12) * 1.0 // 100% capacity utilization
         return sum + Math.floor(cap)
       }, 0)
 
-      const batchCustomers = remainingCustomers.slice(0, Math.min(remainingCustomers.length, batchCapacity + 5))
+      // Select customers based on batch capacity (no +5 buffer)
+      const batchCustomers = remainingCustomers.slice(0, Math.min(remainingCustomers.length, batchCapacity))
 
       if (batchCustomers.length === 0) continue
 
@@ -197,8 +201,9 @@ async function optimizeWithORS(
       })
 
       const orsVehicles = vehicleBatch.map((vehicle, index) => {
+        // Use 100% capacity for maximum load per vehicle (minimize number of vehicles needed)
         const capacity = Math.floor(
-          (vehicle.capacity_pallet || vehicle.capacity_pallets || 12) * (options.vehicleCapacityUtilization || 0.9),
+          (vehicle.capacity_pallet || vehicle.capacity_pallets || 12) * 1.0,
         )
 
         // Parse coordinates to ensure they are numbers
