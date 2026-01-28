@@ -65,7 +65,7 @@ export function OptimizationPanel() {
   // Parameters
   const [fuelPrice, setFuelPrice] = useState(47.5)
   const [maxRouteDistance, setMaxRouteDistance] = useState<number | null>(null)
-  const [maxRouteDuration, setMaxRouteDuration] = useState(600)
+  const [maxRouteDuration, setMaxRouteDuration] = useState(1200) // 20 hours max driver working time
   const [useRealDistances, setUseRealDistances] = useState(true)
   const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ors")
 
@@ -521,8 +521,8 @@ export function OptimizationPanel() {
                     value={[maxRouteDuration]}
                     onValueChange={([v]) => setMaxRouteDuration(v)}
                     min={60}
-                    max={720}
-                    step={30}
+                    max={1200}
+                    step={60}
                     className="flex-1"
                   />
                 </div>
