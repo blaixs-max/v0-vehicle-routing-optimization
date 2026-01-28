@@ -100,7 +100,7 @@ export async function POST(request: Request) {
         algorithm: "ortools",
         fuel_price_per_liter: 47.5,
         max_route_distance_km: 500,
-        max_route_time_min: 600,
+        max_route_time_min: 1200,
       }
 
       console.log("[v0] Railway request summary:", {
