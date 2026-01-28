@@ -37,10 +37,10 @@ WHERE assigned_depot_id = (SELECT id FROM depots WHERE city = 'Ankara' LIMIT 1);
 -- Verification: Show customer distribution by city
 SELECT 
     CASE 
-        WHEN address LIKE '%İstanbul%' OR address LIKE '%Istanbul%' THEN 'Istanbul'
-        WHEN address LIKE '%Ankara%' THEN 'Ankara'
-        WHEN address LIKE '%İzmir%' OR address LIKE '%Izmir%' THEN 'Izmir'
-        WHEN address LIKE '%Adana%' THEN 'Adana'
+        WHEN c.address LIKE '%İstanbul%' OR c.address LIKE '%Istanbul%' THEN 'Istanbul'
+        WHEN c.address LIKE '%Ankara%' THEN 'Ankara'
+        WHEN c.address LIKE '%İzmir%' OR c.address LIKE '%Izmir%' THEN 'Izmir'
+        WHEN c.address LIKE '%Adana%' THEN 'Adana'
         ELSE 'Other'
     END AS customer_city,
     COUNT(*) AS customer_count,
