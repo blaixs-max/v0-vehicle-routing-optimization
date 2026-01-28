@@ -101,6 +101,7 @@ async function optimizeWithORS(
     maxRouteDistanceKm?: number
     maxRouteTimeMin?: number
     vehicleCapacityUtilization?: number
+    serviceDurationMinutes?: number
   },
 ) {
   const startTime = Date.now()
@@ -192,10 +193,13 @@ async function optimizeWithORS(
           throw new Error(`Customer ${customer.name} has invalid coordinates`)
         }
         
+        // Use serviceDuration from options (in minutes), convert to seconds for ORS API
+        const serviceTimeSeconds = (options.serviceDurationMinutes || 45) * 60
+        
         return {
           id: index + 1,
           location: [custLng, custLat] as [number, number],
-          service: 900,
+          service: serviceTimeSeconds,
           amount: [customer.demand_pallets || customer.demand_pallet || 1],
         }
       })
@@ -850,13 +854,14 @@ export async function POST(req: NextRequest) {
         maxRouteDistanceKm: maxRouteDistance,
         maxRouteTimeMin: maxRouteTime,
       })
-    } else {
-      optimization = await optimizeWithORS(selectedDepots, availableVehicles, selectedCustomers, {
-        fuelPricePerLiter: fuelPrice,
-        maxRouteDistanceKm: maxRouteDistance,
-        maxRouteTimeMin: maxRouteTime,
-      })
-    }
+  } else {
+    optimization = await optimizeWithORS(selectedDepots, availableVehicles, selectedCustomers, {
+      fuelPricePerLiter: fuelPrice,
+      maxRouteDistanceKm: maxRouteDistance,
+      maxRouteTimeMin: maxRouteTime,
+      serviceDurationMinutes,
+    })
+  }
 
     return NextResponse.json(optimization)
   } catch (error: any) {
