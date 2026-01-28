@@ -67,7 +67,7 @@ export function OptimizationPanel() {
   const [maxRouteDistance, setMaxRouteDistance] = useState<number | null>(null)
   const [maxRouteDuration, setMaxRouteDuration] = useState(600)
   const [useRealDistances, setUseRealDistances] = useState(true)
-  const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ortools")
+  const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ors")
 
   const loading = depotsLoading || vehiclesLoading || customersLoading
   const depots = depotsData || []
@@ -637,10 +637,36 @@ export function OptimizationPanel() {
         {/* Right Panel - Results */}
         <div className="lg:col-span-2">
           {optimizeError ? (
-            <Alert className="border-red-500/50 bg-red-500/10">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-              <AlertDescription className="text-red-600 dark:text-red-400">{optimizeError}</AlertDescription>
-            </Alert>
+            <div className="space-y-4">
+              <Alert className="border-red-500/50 bg-red-500/10">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                <AlertDescription className="text-red-600 dark:text-red-400">{optimizeError}</AlertDescription>
+              </Alert>
+              
+              {/* Show suggestion if timeout with OR-Tools */}
+              {optimizeError.includes("TIMEOUT") && algorithm === "ortools" && (
+                <Alert className="border-blue-500/50 bg-blue-500/10">
+                  <Zap className="h-4 w-4 text-blue-500" />
+                  <AlertDescription className="text-blue-600 dark:text-blue-400">
+                    <div className="space-y-2">
+                      <p className="font-semibold">Öneri: ORS/VROOM algoritmasını deneyin</p>
+                      <p className="text-sm">
+                        OR-Tools uzun mesafeli rotalar (Adana-Ankara gibi) için zaman aşımına uğradı. 
+                        ORS/VROOM algoritması çok daha hızlıdır ve 23 müşteri için kolayca çalışır.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 border-blue-500 text-blue-600 hover:bg-blue-50"
+                        onClick={() => setAlgorithm("ors")}
+                      >
+                        ORS/VROOM'a Geç
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
           ) : result ? (
             <>
               <OptimizationResults result={result} depots={depots} />
