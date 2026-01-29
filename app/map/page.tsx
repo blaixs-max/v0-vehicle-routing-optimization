@@ -241,10 +241,12 @@ export default function MapPage() {
       // Update local state
       updateRouteStatus(routeId, newStatus)
 
-      // Update orders status if route is approved/in_transit/completed
-      if (["approved", "in_transit", "completed"].includes(newStatus)) {
+      // Update orders status if route is approved/in_progress/completed
+      if (["approved", "in_progress", "completed"].includes(newStatus)) {
         console.log("[v0] Updating orders for route status:", newStatus)
-        await updateOrdersStatus(routeId, newStatus)
+        // Map route status to order status (routes use in_progress, orders use in_transit)
+        const orderStatus = newStatus === "in_progress" ? "in_transit" : newStatus
+        await updateOrdersStatus(routeId, orderStatus)
       }
 
       // Refresh routes from database
@@ -635,12 +637,12 @@ export default function MapPage() {
                                     </DropdownMenuItem>
                                   )}
                   {(route.status === "pending" || route.status === "approved") && (
-                    <DropdownMenuItem onClick={() => handleStatusChange(route.id, "in_transit")}>
+                    <DropdownMenuItem onClick={() => handleStatusChange(route.id, "in_progress")}>
                       <Play className="w-4 h-4 mr-2 text-emerald-500" />
                       Yola Cikart
                     </DropdownMenuItem>
                   )}
-                  {route.status === "in_transit" && (
+                  {route.status === "in_progress" && (
                     <DropdownMenuItem onClick={() => handleStatusChange(route.id, "completed")}>
                                       <Square className="w-4 h-4 mr-2 text-slate-500" />
                                       Tamamla

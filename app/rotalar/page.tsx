@@ -11,7 +11,7 @@ export default function RotalarPage() {
 
   const statusConfig = {
     planned: { label: "Planlandı", color: "bg-blue-500" },
-    in_transit: { label: "Devam Ediyor", color: "bg-yellow-500" },
+    in_progress: { label: "Devam Ediyor", color: "bg-yellow-500" },
     completed: { label: "Tamamlandı", color: "bg-green-500" },
     cancelled: { label: "İptal Edildi", color: "bg-red-500" },
   }

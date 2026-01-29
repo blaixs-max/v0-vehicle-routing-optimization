@@ -75,7 +75,7 @@ export interface Route {
   fixed_cost: number
   distance_cost: number
   fuel_cost: number
-  status: "planned" | "in_transit" | "completed"
+  status: "planned" | "in_progress" | "completed"
   optimized_at?: string
   created_at?: string
   // Relations
