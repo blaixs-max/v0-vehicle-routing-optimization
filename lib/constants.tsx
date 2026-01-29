@@ -135,9 +135,9 @@ export const SERVICE_DURATION_BY_BUSINESS = {
 }
 
 export const DRIVER_RULES = {
-  max_work_hours: 9, // Toplam 9 saat sürüş
-  break_duration: 45, // 45 dakika mola
-  break_after_hours: 4.5, // 4.5 saat sonra mola zorunlu
+  max_work_hours: 999, // Sınırsız
+  break_duration: 0, // Mola yok
+  break_after_hours: 999, // Sınırsız
 }
 
 // Defaults
@@ -145,7 +145,7 @@ export const DEFAULTS = {
   fuelPricePerLiter: 47.5, // 2026 güncel yakıt fiyatı (manuel girilmeli)
   vehicleCapacityUtilization: 0.9,
   maxRouteDistance: 0, // Sınırsız
-  maxRouteDuration: 0, // Sadece sürücü çalışma saati kontrolü
+  maxRouteDuration: 0, // Sınırsız
   serviceTimePerStop: 30, // Varsayılan 30 dk (business'a göre değişir)
   averageSpeed: 50, // km/h
 }

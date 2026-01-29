@@ -623,12 +623,8 @@ async function optimizeWithRailway(
       const vehicleId = route.vehicle_id || `vehicle-${index}`
       const routeId = `route-${Date.now()}-${vehicleId}`
       
-      // Validate duration - should not exceed 600 minutes
+      // Duration calculation - no time limits
       const calculatedDuration = route.duration_minutes || Math.round(((route.distance_km || 0) / 60) * 60) || 0
-      if (calculatedDuration > 600) {
-        console.warn(`[v0] WARNING: Route ${vehicleId} has duration ${calculatedDuration} min (>600 min limit!)`)
-        console.warn(`[v0] Route details: distance=${route.distance_km}km, stops=${route.stops?.length}`)
-      }
       
       return {
         id: routeId,
@@ -774,7 +770,7 @@ export async function POST(req: NextRequest) {
       algorithm = "ortools",
       fuelPrice = 47.5,
       maxRouteDistance,
-      maxRouteTime = 600,
+      maxRouteTime = 0,
     } = body
     
     console.log("[v0] DEBUG: requestCustomers[0]:", JSON.stringify(requestCustomers?.[0], null, 2))
