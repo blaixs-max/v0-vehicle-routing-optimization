@@ -491,6 +491,7 @@ async function optimizeWithRailway(
         priority: order.priority || 'normal',
         business_type: c.business_type || "retail",
         service_duration: c.service_duration_minutes || serviceDurationMinutes,
+        Time: [0, 1439], // Tüm gün: 00:00 (0 min) to 23:59 (1439 min) - Zaman kısıtı yok
         time_constraints: c.has_time_constraint
           ? {
               start: c.constraint_start_time,
