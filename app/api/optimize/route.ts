@@ -804,12 +804,28 @@ export async function POST(req: NextRequest) {
     let optimization
 
     if (algorithm === "ortools") {
-      optimization = await optimizeWithRailway(selectedDepots, availableVehicles, selectedCustomers, orders || [], {
-        algorithm,
-        fuelPricePerLiter: fuelPrice,
-        maxRouteDistanceKm: maxRouteDistance,
-        maxRouteTimeMin: maxRouteTime,
-      })
+      try {
+        optimization = await optimizeWithRailway(selectedDepots, availableVehicles, selectedCustomers, orders || [], {
+          algorithm,
+          fuelPricePerLiter: fuelPrice,
+          maxRouteDistanceKm: maxRouteDistance,
+          maxRouteTimeMin: maxRouteTime,
+        })
+      } catch (railwayError: any) {
+        console.warn("[v0] Railway failed, falling back to VROOM:", railwayError.message)
+        console.log("[v0] Attempting VROOM fallback optimization...")
+        
+        // Fallback to VROOM if Railway fails
+        optimization = await optimizeWithORS(selectedDepots, availableVehicles, selectedCustomers, {
+          fuelPricePerLiter: fuelPrice,
+          maxRouteDistanceKm: maxRouteDistance,
+          maxRouteTimeMin: maxRouteTime,
+        })
+        
+        // Add fallback notice to result
+        optimization.fallback = true
+        optimization.fallbackReason = "Railway OR-Tools servisi yanıt vermedi, VROOM kullanıldı"
+      }
     } else {
       optimization = await optimizeWithORS(selectedDepots, availableVehicles, selectedCustomers, {
         fuelPricePerLiter: fuelPrice,
