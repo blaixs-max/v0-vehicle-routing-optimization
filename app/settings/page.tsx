@@ -212,7 +212,11 @@ export default function SettingsPage() {
                     <button
                       key={depot.id}
                       type="button"
-                      onClick={() => setSelectedDepot(depot.id)}
+                      onClick={() => {
+                        console.log("[v0] Depo değiştiriliyor:", depot.id)
+                        setSelectedDepot(depot.id)
+                        showToast("success", "Depo Değiştirildi", `${depot.name} aktif depo olarak seçildi`)
+                      }}
                       className={`p-4 border-2 rounded-lg transition-all hover:border-primary/50 ${
                         selectedDepotId === depot.id
                           ? "border-primary bg-primary/5 ring-2 ring-primary/20"
