@@ -817,7 +817,6 @@ export default function MapPage() {
           </div>
         </div>
       </Suspense>
-    </DashboardLayout>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
@@ -839,5 +838,6 @@ export default function MapPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </DashboardLayout>
   )
 }
