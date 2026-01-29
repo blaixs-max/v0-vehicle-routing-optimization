@@ -32,6 +32,7 @@ class Customer(BaseModel):
     demand_pallets: int
     business_type: str
     service_duration: int
+    Time: Optional[List[int]] = None  # Time window in minutes [start, end] - e.g. [480, 1080] for 08:00-18:00
     has_time_constraint: bool = False
     constraint_start_time: Optional[str] = None  # Format: "HH:MM" - start of CLOSED period
     constraint_end_time: Optional[str] = None    # Format: "HH:MM" - end of CLOSED period
