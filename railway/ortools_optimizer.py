@@ -336,10 +336,49 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         # In production, consider implementing this as a post-optimization filter or
         # using OR-Tools allowed/forbidden arc callbacks with proper slack
         
-        # TIME DIMENSION: DISABLED for better feasibility
-        print(f"[OR-Tools] ===== TIME DIMENSION: DISABLED =====")
-        print(f"[OR-Tools] Time constraints removed to prioritize finding feasible solutions")
-        print(f"[OR-Tools] Optimization will focus on capacity and distance minimization")
+        # Add Time dimension for duration tracking
+        print(f"[OR-Tools] ===== ADDING TIME DIMENSION =====")
+        
+        def time_callback(from_index, to_index):
+            """Calculate travel + service time between nodes"""
+            try:
+                from_node = manager.IndexToNode(from_index)
+                to_node = manager.IndexToNode(to_index)
+                
+                # Travel time (distance in meters / 60 km/h = minutes)
+                travel_time_minutes = (distance_matrix[from_node][to_node] / 1000) / 60 * 60
+                
+                # Service time at destination (0 for depot)
+                if to_node == 0:
+                    service_time_minutes = 0
+                else:
+                    customer = customers[to_node - 1]
+                    business_type = customer.get("business_type", "default")
+                    service_time_minutes = SERVICE_TIMES.get(business_type, SERVICE_TIMES["default"])
+                
+                return int(travel_time_minutes + service_time_minutes)
+            except Exception as e:
+                print(f"[OR-Tools] ERROR in time_callback: {e}")
+                return 999999
+        
+        time_callback_index = routing.RegisterTransitCallback(time_callback)
+        
+        # Time dimension: max 1440 minutes per route (24 hours)
+        routing.AddDimension(
+            time_callback_index,
+            120,  # slack: 120 minutes (2 hours)
+            1440,  # max: 1440 minutes (24 hours) per vehicle
+            True,  # start cumul to zero
+            'Time'
+        )
+        
+        # Verify Time dimension was added successfully
+        try:
+            test_time_dim = routing.GetDimensionOrDie('Time')
+            print(f"[OR-Tools] ✓ Time dimension added successfully (max 24h per route, 2h slack)")
+        except Exception as e:
+            print(f"[OR-Tools] ✗ CRITICAL: Time dimension NOT found after AddDimension! Error: {e}")
+            raise Exception(f"Time dimension creation failed: {e}")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         
@@ -394,8 +433,11 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         # Parse results
         routes = []
         
-        # Get time dimension for duration calculation
-        time_dimension = routing.GetDimensionOrDie('Time')
+        # Get time dimension for duration calculation (use GetDimension to avoid crash)
+        time_dimension = routing.GetDimension('Time')
+        if not time_dimension:
+            print(f"[OR-Tools] CRITICAL WARNING: Time dimension not found! Using fallback duration calculation.")
+            time_dimension = None  # Will trigger fallback logic
         
         for vehicle_id in range(num_vehicles):
             index = routing.Start(vehicle_id)
@@ -448,14 +490,22 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 vehicle = vehicles[vehicle_id]
                 fuel_consumption = VEHICLE_TYPES[vehicle["type"]]["fuel"]
                 
-                # Calculate route duration from time dimension
+                # Calculate route duration from time dimension or fallback
                 end_index = routing.End(vehicle_id)
-                route_duration_min = solution.Min(time_dimension.CumulVar(end_index))
+                if time_dimension:
+                    route_duration_min = solution.Min(time_dimension.CumulVar(end_index))
+                else:
+                    # Fallback: estimate duration from distance (60 km/h average)
+                    route_duration_min = int((route_distance_km / 60) * 60)
+                    # Add service times for all stops
+                    for stop in route_stops:
+                        route_duration_min += stop.get("service_duration", 30)
+                    print(f"[OR-Tools] WARNING: Using fallback duration calculation for vehicle {vehicle_id}: {route_duration_min} min")
                 
-                # Validate duration against 600-minute target (660 max with slack)
-                if route_duration_min > 600:
+                # Validate duration against 1440-minute target (1560 max with slack)
+                if route_duration_min > 1440:
                     print(f"[OR-Tools] INFO: Route for vehicle {vehicle_id} uses slack time")
-                    print(f"[OR-Tools]   Duration: {route_duration_min} min (target: 600, max: 660)")
+                    print(f"[OR-Tools]   Duration: {route_duration_min} min (target: 1440, max: 1560)")
                     print(f"[OR-Tools]   Distance: {route_distance_km:.2f} km")
                     print(f"[OR-Tools]   Stops: {len(route_stops)}")
                     
@@ -470,7 +520,7 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 total_cost = fuel_cost + distance_cost + fixed_cost + toll_cost
                 
                 # Cap duration at 600 for display (even if slack was used)
-                display_duration = min(route_duration_min, 600)
+                display_duration = min(route_duration_min, 1440)
                 
                 routes.append({
                     "vehicle_id": vehicle["id"],
@@ -652,11 +702,11 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         
         time_callback_index = routing.RegisterTransitCallback(time_callback)
         
-        # Time dimension: max 600 minutes per route (10 hours total including breaks)
+        # Time dimension: max 1440 minutes per route (24 hours total including breaks)
         routing.AddDimension(
             time_callback_index,
-            0,  # No slack
-            600,  # Max 600 minutes (10 hours) per vehicle
+            120,  # slack: 120 minutes (2 hours)
+            1440,  # Max 1440 minutes (24 hours) per vehicle
             True,  # Start cumul to zero
             'Time'
         )
