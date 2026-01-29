@@ -10,7 +10,7 @@ interface DepotStore {
 export const useDepotStore = create<DepotStore>()(
   persist(
     (set) => ({
-      selectedDepotId: null,
+      selectedDepotId: "depot-2", // Default to Ankara Depo where all customers are
       setSelectedDepot: (depotId) => set({ selectedDepotId: depotId }),
       clearSelectedDepot: () => set({ selectedDepotId: null }),
     }),
