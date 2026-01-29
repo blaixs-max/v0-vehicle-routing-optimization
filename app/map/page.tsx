@@ -241,8 +241,8 @@ export default function MapPage() {
       // Update local state
       updateRouteStatus(routeId, newStatus)
 
-      // Update orders status if route is approved/in_progress/completed
-      if (["approved", "in_progress", "completed"].includes(newStatus)) {
+      // Update orders status if route is approved/in_transit/completed
+      if (["approved", "in_transit", "completed"].includes(newStatus)) {
         console.log("[v0] Updating orders for route status:", newStatus)
         await updateOrdersStatus(routeId, newStatus)
       }
@@ -634,14 +634,14 @@ export default function MapPage() {
                                       Onayla
                                     </DropdownMenuItem>
                                   )}
-                                  {(route.status === "pending" || route.status === "approved") && (
-                                    <DropdownMenuItem onClick={() => handleStatusChange(route.id, "in_progress")}>
-                                      <Play className="w-4 h-4 mr-2 text-emerald-500" />
-                                      Yola Cikart
-                                    </DropdownMenuItem>
-                                  )}
-                                  {route.status === "in_progress" && (
-                                    <DropdownMenuItem onClick={() => handleStatusChange(route.id, "completed")}>
+                  {(route.status === "pending" || route.status === "approved") && (
+                    <DropdownMenuItem onClick={() => handleStatusChange(route.id, "in_transit")}>
+                      <Play className="w-4 h-4 mr-2 text-emerald-500" />
+                      Yola Cikart
+                    </DropdownMenuItem>
+                  )}
+                  {route.status === "in_transit" && (
+                    <DropdownMenuItem onClick={() => handleStatusChange(route.id, "completed")}>
                                       <Square className="w-4 h-4 mr-2 text-slate-500" />
                                       Tamamla
                                     </DropdownMenuItem>

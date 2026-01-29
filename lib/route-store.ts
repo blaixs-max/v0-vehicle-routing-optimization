@@ -3,7 +3,7 @@ import type { MockRoute } from "@/lib/mock-data"
 
 const STORAGE_KEY = "vrp_optimized_routes"
 
-export type RouteStatus = "pending" | "approved" | "in_progress" | "completed" | "cancelled"
+export type RouteStatus = "pending" | "approved" | "in_transit" | "completed" | "cancelled"
 
 export interface StoredRouteData {
   routes: MockRoute[]

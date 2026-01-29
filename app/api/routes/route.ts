@@ -330,7 +330,7 @@ export async function PATCH(request: Request) {
     }
 
     // Validate status
-    const validStatuses = ['pending', 'approved', 'in_progress', 'completed', 'cancelled']
+    const validStatuses = ['pending', 'approved', 'in_transit', 'completed', 'cancelled']
     if (!validStatuses.includes(status)) {
       return NextResponse.json({ error: "Invalid status value" }, { status: 400 })
     }

@@ -48,7 +48,7 @@ const statusConfig = {
   pending: { label: "Bekliyor", color: "bg-amber-100 text-amber-700", icon: Clock },
   assigned: { label: "Atandı", color: "bg-blue-100 text-blue-700", icon: Package },
   approved: { label: "Onaylandı", color: "bg-indigo-100 text-indigo-700", icon: CheckCircle },
-  in_progress: { label: "Yolda", color: "bg-sky-100 text-sky-700", icon: Package },
+  in_transit: { label: "Yolda", color: "bg-sky-100 text-sky-700", icon: Package },
   completed: { label: "Teslim Edildi", color: "bg-emerald-100 text-emerald-700", icon: CheckCircle },
   cancelled: { label: "İptal", color: "bg-red-100 text-red-700", icon: Clock },
 } as const
