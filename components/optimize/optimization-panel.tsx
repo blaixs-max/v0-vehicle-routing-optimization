@@ -259,8 +259,10 @@ export function OptimizationPanel() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        console.error("[v0] API error:", errorData)
-        throw new Error(errorData.error || "Optimization failed")
+        console.error("[v0] API error response:", errorData)
+        console.error("[v0] Response status:", response.status, response.statusText)
+        const errorMessage = errorData.error || `Optimization failed with status ${response.status}`
+        throw new Error(errorMessage)
       }
 
       const result = await response.json()
@@ -319,10 +321,17 @@ export function OptimizationPanel() {
       
       setOptimizing(false)
       setOptimizeError(errorMessage)
+      
+      // Split multiline error messages for better display
+      const errorLines = errorMessage.split('\n')
+      const errorTitle = errorLines[0]
+      const errorDetails = errorLines.slice(1).join('\n')
+      
       toast({
-        title: "Hata",
-        description: errorMessage,
+        title: errorLines.length > 1 ? errorTitle : "Hata",
+        description: errorLines.length > 1 ? errorDetails : errorMessage,
         variant: "destructive",
+        duration: 10000, // Show error for 10 seconds since it has important info
       })
     }
   }

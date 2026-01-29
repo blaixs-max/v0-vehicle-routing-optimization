@@ -557,11 +557,11 @@ async function optimizeWithRailway(
 
   try {
     const controller = new AbortController()
-    // Reduce timeout to 120 seconds (2 minutes) - Railway should respond faster now
+    // Reduce timeout to 90 seconds - Railway should respond faster, if not we fail fast
     const timeoutId = setTimeout(() => {
-      console.error("[v0] Railway request timed out after 120 seconds")
+      console.error("[v0] Railway request timed out after 90 seconds")
       controller.abort()
-    }, 120000)
+    }, 90000)
 
     console.log("[v0] Calling Railway API:", process.env.RAILWAY_API_URL)
     console.log("[v0] Request body sample:", {
@@ -732,7 +732,7 @@ async function optimizeWithRailway(
     console.error("[v0] Error message:", error.message)
 
     if (error.name === "AbortError" || error.message?.includes('aborted')) {
-      throw new Error("Railway optimizasyonu 120 saniye içinde tamamlanamadı. Olası nedenler:\n1. Railway servisi yeni deploy edildi ve henüz hazır değil\n2. Değişiklikler henüz Railway'e push edilmedi\n3. Railway servisi çalışmıyor\n\nLütfen Railway dashboard'u kontrol edin veya VROOM algoritmasını deneyin.")
+      throw new Error("Railway optimizasyonu 90 saniye içinde tamamlanamadı. Olası nedenler:\n1. Railway servisi çok yavaş yanıt veriyor veya cold start yaşıyor\n2. Railway servisi çalışmıyor veya hatalı\n3. OSRM servisi erişilebilir değil\n\nÖneriler:\n- Railway dashboard'da servisi kontrol edin\n- VROOM algoritmasını deneyin (daha hızlı)\n- Müşteri sayısını azaltarak test edin")
     }
 
     throw error
@@ -879,4 +879,5 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export const maxDuration = 60
+// Increase max duration to 180 seconds (3 minutes) to allow Railway optimization to complete
+export const maxDuration = 180
