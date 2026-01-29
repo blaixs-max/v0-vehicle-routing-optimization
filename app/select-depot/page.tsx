@@ -4,14 +4,57 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { useDepotStore, DEPOTS } from "@/lib/depot-store"
 import { useRouter } from "next/navigation"
-import { Building2, MapPin, Package } from "lucide-react"
+import { Building2, MapPin, Package, Users, ShoppingCart } from "lucide-react"
+import { useEffect, useState } from "react"
+
+interface DepotStats {
+  customers: number
+  orders: number
+}
 
 export default function SelectDepotPage() {
   const router = useRouter()
   const setSelectedDepot = useDepotStore((state) => state.setSelectedDepot)
+  const [depotStats, setDepotStats] = useState<Record<string, DepotStats>>({})
+  const [loading, setLoading] = useState(true)
 
-  const handleDepotSelect = (depotId: string) => {
+  useEffect(() => {
+    const fetchDepotStats = async () => {
+      try {
+        const stats: Record<string, DepotStats> = {}
+        
+        for (const depot of DEPOTS) {
+          const [customersRes, ordersRes] = await Promise.all([
+            fetch(`/api/customers?depot_id=${depot.id}`),
+            fetch(`/api/orders?depot_id=${depot.id}`)
+          ])
+          
+          const customers = await customersRes.json()
+          const orders = await ordersRes.json()
+          
+          stats[depot.id] = {
+            customers: Array.isArray(customers) ? customers.length : 0,
+            orders: Array.isArray(orders) ? orders.length : 0
+          }
+        }
+        
+        setDepotStats(stats)
+      } catch (error) {
+        console.error("[v0] Error fetching depot stats:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchDepotStats()
+  }, [])
+
+  const handleDepotSelect = async (depotId: string) => {
+    console.log("[v0] Depo seçildi:", depotId)
     setSelectedDepot(depotId)
+    // Give a moment for state to update
+    await new Promise(resolve => setTimeout(resolve, 100))
+    console.log("[v0] Ana sayfaya yönlendiriliyor...")
     router.push("/")
   }
 
@@ -47,6 +90,23 @@ export default function SelectDepotPage() {
                     <span>{depot.city}</span>
                   </div>
                   <p className="text-sm text-muted-foreground">{depot.description}</p>
+                  
+                  {loading ? (
+                    <div className="text-xs text-muted-foreground py-2">Yükleniyor...</div>
+                  ) : depotStats[depot.id] ? (
+                    <div className="flex items-center justify-center gap-4 text-sm pt-2">
+                      <div className="flex items-center gap-1">
+                        <Users className="h-4 w-4 text-primary" />
+                        <span className="font-medium">{depotStats[depot.id].customers}</span>
+                        <span className="text-muted-foreground">müşteri</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <ShoppingCart className="h-4 w-4 text-primary" />
+                        <span className="font-medium">{depotStats[depot.id].orders}</span>
+                        <span className="text-muted-foreground">sipariş</span>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <Button className="w-full" size="lg">

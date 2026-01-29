@@ -65,7 +65,7 @@ export function OptimizationPanel() {
   // Parameters
   const [fuelPrice, setFuelPrice] = useState(47.5)
   const [maxRouteDistance, setMaxRouteDistance] = useState<number | null>(null)
-  const [maxRouteDuration, setMaxRouteDuration] = useState(600)
+  const [maxRouteDuration, setMaxRouteDuration] = useState(0)
   const [useRealDistances, setUseRealDistances] = useState(true)
   const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ortools")
 
