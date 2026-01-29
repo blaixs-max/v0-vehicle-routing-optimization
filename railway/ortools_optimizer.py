@@ -158,28 +158,6 @@ def optimize_routes(depots: list, customers: list, vehicles: list, fuel_price: f
         total_demand += depot_demand
         print(f"[OR-Tools] Depot {depot['id']}: {len(depot_customers)} customers, {depot_demand} pallets demand")
     
-    # CRITICAL FIX: Limit total vehicles based on actual demand
-    if len(vehicles) > 0 and total_demand > 0:
-        max_vehicle_capacity = max(v.get("capacity_pallets", 26) for v in vehicles)
-        min_vehicles_needed = math.ceil(total_demand / max_vehicle_capacity)
-        
-        # Add 20% buffer, cap at 6 vehicles maximum
-        optimal_vehicle_count = min(
-            max(2, math.ceil(min_vehicles_needed * 1.2)),
-            len(vehicles),
-            6  # Hard cap at 6 vehicles total across all depots
-        )
-        
-        print(f"[OR-Tools] ===== MULTI-DEPOT VEHICLE OPTIMIZATION =====")
-        print(f"[OR-Tools] Total demand: {total_demand} pallets")
-        print(f"[OR-Tools] Min vehicles needed: {min_vehicles_needed}")
-        print(f"[OR-Tools] Optimal vehicle count: {optimal_vehicle_count}")
-        print(f"[OR-Tools] Available vehicles before limit: {len(vehicles)}")
-        
-        # Limit vehicles to optimal count
-        vehicles = vehicles[:optimal_vehicle_count]
-        print(f"[OR-Tools] Vehicles after limit: {len(vehicles)}")
-    
     # Distribute vehicles proportionally to demand
     total_capacity = sum(v.get("capacity_pallets", 26) for v in vehicles)
     print(f"[OR-Tools] Total demand: {total_demand} pallets, Total capacity: {total_capacity} pallets")
@@ -273,36 +251,10 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             service_times_list.append(service_duration)
         
         num_locations = len(locations)
-        
-        # CRITICAL FIX: Limit vehicles based on actual demand to minimize route count
-        # Calculate minimum vehicles needed
-        total_demand = sum(demands)
-        if len(vehicles) > 0:
-            max_vehicle_capacity = max(v.get("capacity_pallets", 26) for v in vehicles)
-            min_vehicles_needed = math.ceil(total_demand / max_vehicle_capacity)
-            
-            # Add 20% buffer for inefficiency, but cap at reasonable limit
-            optimal_vehicle_count = min(
-                max(2, math.ceil(min_vehicles_needed * 1.2)),  # At least 2, +20% buffer
-                len(vehicles),  # Don't exceed available
-                6  # Hard cap at 6 vehicles maximum
-            )
-            
-            print(f"[OR-Tools] ===== VEHICLE OPTIMIZATION =====")
-            print(f"[OR-Tools] Total demand: {total_demand} pallets")
-            print(f"[OR-Tools] Max vehicle capacity: {max_vehicle_capacity} pallets")
-            print(f"[OR-Tools] Min vehicles needed: {min_vehicles_needed}")
-            print(f"[OR-Tools] Optimal vehicle count (with buffer): {optimal_vehicle_count}")
-            print(f"[OR-Tools] Available vehicles: {len(vehicles)}")
-            
-            # Use only the optimal number of vehicles
-            vehicles = vehicles[:optimal_vehicle_count]
-            num_vehicles = len(vehicles)
-        else:
-            num_vehicles = 0
+        num_vehicles = len(vehicles)
         
         print(f"[OR-Tools] Locations: {num_locations} (1 depot + {num_locations-1} customers)")
-        print(f"[OR-Tools] Vehicles to use: {num_vehicles}")
+        print(f"[OR-Tools] Total demand: {sum(demands)} pallets")
         
         # Distance matrix - OSRM Table API ile gerçek yol mesafesi
         print(f"[OR-Tools] ===== MESAFE MATRİSİ HESAPLANIYOR =====")
@@ -338,11 +290,11 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         transit_callback_index = routing.RegisterTransitCallback(distance_callback)
         routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
         
-        # Add SIGNIFICANT fixed cost per vehicle to minimize vehicle count
-        # This makes using each vehicle "expensive" so optimizer strongly prefers fewer vehicles
-        # 50000 units ≈ 50 km equivalent cost per vehicle (5x increased from 10000)
-        routing.SetFixedCostOfAllVehicles(50000)
-        print(f"[OR-Tools] Fixed vehicle cost: 50000 (strongly prioritizes fewer vehicles)")
+        # Add fixed cost per vehicle to minimize vehicle count
+        # This makes using each vehicle "expensive" so optimizer prefers fewer vehicles
+        # 10000 units ≈ 10 km equivalent cost per vehicle
+        routing.SetFixedCostOfAllVehicles(10000)
+        print(f"[OR-Tools] Fixed vehicle cost: 10000 (prioritizes fewer vehicles)")
         
         def demand_callback(from_index):
             from_node = manager.IndexToNode(from_index)
@@ -652,31 +604,10 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
             demands.append(customer.get("demand_pallets", 1))
         
         num_locations = len(locations)
-        
-        # CRITICAL FIX: Limit vehicles based on actual demand
-        total_demand = sum(demands)
-        if len(vehicles) > 0 and total_demand > 0:
-            max_vehicle_capacity = max(v.get("capacity_pallets", 26) for v in vehicles)
-            min_vehicles_needed = math.ceil(total_demand / max_vehicle_capacity)
-            
-            # Add 20% buffer, cap at 6 vehicles
-            optimal_vehicle_count = min(
-                max(2, math.ceil(min_vehicles_needed * 1.2)),
-                len(vehicles),
-                6  # Hard cap
-            )
-            
-            print(f"[OR-Tools] ===== MULTI-DEPOT VEHICLE LIMIT =====")
-            print(f"[OR-Tools] Min vehicles needed: {min_vehicles_needed}")
-            print(f"[OR-Tools] Optimal vehicle count: {optimal_vehicle_count}")
-            
-            vehicles = vehicles[:optimal_vehicle_count]
-        
         num_vehicles = len(vehicles)
         
         print(f"[OR-Tools] Valid locations: {num_locations}")
-        print(f"[OR-Tools] Total demand: {total_demand} pallets")
-        print(f"[OR-Tools] Vehicles to use: {num_vehicles}")
+        print(f"[OR-Tools] Total demand: {sum(demands)} pallets")
         
         distance_matrix = []
         for i, loc1 in enumerate(locations):
@@ -746,9 +677,9 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
         print(f"[OR-Tools] Distance callback registered")
         
-        # Add SIGNIFICANT fixed cost per vehicle to minimize vehicle count
-        routing.SetFixedCostOfAllVehicles(50000)
-        print(f"[OR-Tools] Fixed vehicle cost: 50000 (strongly prioritizes fewer vehicles)")
+        # Add fixed cost per vehicle to minimize vehicle count
+        routing.SetFixedCostOfAllVehicles(10000)
+        print(f"[OR-Tools] Fixed vehicle cost: 10000 (prioritizes fewer vehicles)")
         
         def demand_callback(from_index):
             try:

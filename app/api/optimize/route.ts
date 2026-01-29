@@ -381,30 +381,21 @@ async function warmupRailway(): Promise<void> {
   }
 
   try {
-    console.log("[v0] ===== RAILWAY WARMUP START =====")
-    console.log("[v0] Railway URL:", process.env.RAILWAY_API_URL)
-    console.log("[v0] Attempting health check with 10s timeout...")
-    
+    console.log("[v0] Warming up Railway at:", process.env.RAILWAY_API_URL)
     const response = await fetch(`${process.env.RAILWAY_API_URL}/health`, {
       method: "GET",
-      signal: AbortSignal.timeout(10000), // Increased from 5s to 10s
+      signal: AbortSignal.timeout(5000),
     })
     
     if (response.ok) {
       const data = await response.json()
-      console.log("[v0] ✅ Railway health check PASSED:", data)
-      console.log("[v0] ===== RAILWAY READY =====")
+      console.log("[v0] Railway warmed up successfully:", data)
     } else {
-      console.error("[v0] ❌ Railway health check FAILED")
-      console.error("[v0] Status:", response.status, response.statusText)
-      const text = await response.text().catch(() => 'No response body')
-      console.error("[v0] Response:", text)
-      throw new Error(`Railway health check failed with status ${response.status}`)
+      console.warn("[v0] Railway health check failed:", response.status, response.statusText)
     }
   } catch (error) {
-    console.error("[v0] ===== RAILWAY WARMUP FAILED =====")
-    console.error("[v0] Error:", error)
-    throw new Error(`Railway servisi yanıt vermiyor. Railway dashboard'da servisin çalıştığını kontrol edin veya VROOM algoritmasını kullanın. URL: ${process.env.RAILWAY_API_URL} - Error: ${error instanceof Error ? error.message : String(error)}`)
+    console.error("[v0] Railway warmup failed:", error)
+    throw new Error(`Railway servisi yanıt vermiyor. Lütfen RAILWAY_API_URL'yi kontrol edin veya VROOM algoritmasını kullanın. Error: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -542,22 +533,15 @@ async function optimizeWithRailway(
 
   try {
     const controller = new AbortController()
-    // Reduce timeout to 120 seconds (2 minutes) - Railway should respond faster now
-    const timeoutId = setTimeout(() => {
-      console.error("[v0] Railway request timed out after 120 seconds")
-      controller.abort()
-    }, 120000)
+    const timeoutId = setTimeout(() => controller.abort(), 330000) // 5.5 min timeout for Railway (300s + 30s buffer)
 
     console.log("[v0] Calling Railway API:", process.env.RAILWAY_API_URL)
     console.log("[v0] Request body sample:", {
       depotCount: railwayRequest.depots.length,
       customersCount: railwayRequest.customers.length,
       vehiclesCount: railwayRequest.vehicles.length,
-      totalDemand: railwayRequest.customers.reduce((sum, c) => sum + c.demand_pallets, 0),
-      totalCapacity: railwayRequest.vehicles.reduce((sum, v) => sum + v.capacity_pallets, 0),
     })
     console.log("[v0] CRITICAL DEBUG - First customer being sent to Railway:", JSON.stringify(railwayRequest.customers[0]))
-    console.log("[v0] Setting 120s timeout for Railway request...")
 
     // OSRM URL'yi environment variable'dan veya default değerden al
     const osrmUrl = process.env.OSRM_URL || process.env.NEXT_PUBLIC_OSRM_URL || 'https://router.project-osrm.org'
@@ -713,11 +697,9 @@ async function optimizeWithRailway(
     }
   } catch (error: any) {
     console.error("[v0] Railway optimization error:", error)
-    console.error("[v0] Error name:", error.name)
-    console.error("[v0] Error message:", error.message)
 
-    if (error.name === "AbortError" || error.message?.includes('aborted')) {
-      throw new Error("Railway optimizasyonu 120 saniye içinde tamamlanamadı. Olası nedenler:\n1. Railway servisi yeni deploy edildi ve henüz hazır değil\n2. Değişiklikler henüz Railway'e push edilmedi\n3. Railway servisi çalışmıyor\n\nLütfen Railway dashboard'u kontrol edin veya VROOM algoritmasını deneyin.")
+    if (error.name === "AbortError") {
+      throw new Error("Railway API timeout - Lütfen tekrar deneyin")
     }
 
     throw error
