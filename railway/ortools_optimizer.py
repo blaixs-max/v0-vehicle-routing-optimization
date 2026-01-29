@@ -336,10 +336,40 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         # In production, consider implementing this as a post-optimization filter or
         # using OR-Tools allowed/forbidden arc callbacks with proper slack
         
-        # TIME DIMENSION: DISABLED for better feasibility
-        print(f"[OR-Tools] ===== TIME DIMENSION: DISABLED =====")
-        print(f"[OR-Tools] Time constraints removed to prioritize finding feasible solutions")
-        print(f"[OR-Tools] Optimization will focus on capacity and distance minimization")
+        # TIME DIMENSION: Add but don't constrain (used for duration calculation only)
+        print(f"[OR-Tools] ===== TIME DIMENSION: ADDED (NO CONSTRAINTS) =====")
+        print(f"[OR-Tools] Time dimension used for duration tracking only")
+        print(f"[OR-Tools] No time window constraints applied")
+        
+        def time_callback(from_index, to_index):
+            """Calculate travel + service time between nodes"""
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            
+            # Travel time (distance in meters / 60 km/h = minutes)
+            travel_time_minutes = (distance_matrix[from_node][to_node] / 1000) / 60 * 60
+            
+            # Service time at destination (0 for depot)
+            if to_node == 0:
+                service_time_minutes = 0
+            else:
+                customer = customers[to_node - 1]
+                service_time_minutes = customer.get("service_duration", 15)
+            
+            return int(travel_time_minutes + service_time_minutes)
+        
+        time_callback_index = routing.RegisterTransitCallback(time_callback)
+        
+        # Add time dimension with generous limits (no real constraint, just tracking)
+        routing.AddDimension(
+            time_callback_index,
+            60,  # slack: 60 minutes per stop
+            1440,  # max: 24 hours (no real limit)
+            True,  # start cumul to zero
+            'Time'
+        )
+        
+        print(f"[OR-Tools] Time dimension added (tracking only, no constraints)")
         
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         
