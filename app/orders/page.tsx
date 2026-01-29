@@ -47,9 +47,11 @@ interface Order {
 const statusConfig = {
   pending: { label: "Bekliyor", color: "bg-amber-100 text-amber-700", icon: Clock },
   assigned: { label: "Atandı", color: "bg-blue-100 text-blue-700", icon: Package },
+  approved: { label: "Onaylandı", color: "bg-indigo-100 text-indigo-700", icon: CheckCircle },
+  in_progress: { label: "Yolda", color: "bg-sky-100 text-sky-700", icon: Package },
   completed: { label: "Teslim Edildi", color: "bg-emerald-100 text-emerald-700", icon: CheckCircle },
   cancelled: { label: "İptal", color: "bg-red-100 text-red-700", icon: Clock },
-}
+} as const
 
 const priorityConfig = {
   1: { label: "Çok Acil", color: "bg-red-100 text-red-700" },
@@ -236,7 +238,8 @@ export default function OrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredOrders.map((order) => {
-                    const StatusIcon = statusConfig[order.status].icon
+                    const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
+                    const StatusIcon = statusInfo.icon
                     return (
                       <TableRow key={order.id} className="hover:bg-slate-50">
                         <TableCell className="font-mono text-sm">{order.id}</TableCell>
@@ -291,9 +294,9 @@ export default function OrdersPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge className={statusConfig[order.status].color}>
-                            <StatusIcon className="h-3 w-3 mr-1" />
-                            {statusConfig[order.status].label}
+                            <Badge className={statusInfo.color}>
+                              <StatusIcon className="mr-1 h-3 w-3" />
+                              {statusInfo.label}
                           </Badge>
                         </TableCell>
                         <TableCell>{order.delivery_date || order.order_date}</TableCell>
