@@ -491,6 +491,12 @@ async function optimizeWithRailway(
         priority: order.priority || 'normal',
         business_type: c.business_type || "retail",
         service_duration: c.service_duration_minutes || serviceDurationMinutes,
+        Time: c.has_time_constraint
+          ? [
+              parseInt(c.constraint_start_time?.split(':')[0] || '8') * 60 + parseInt(c.constraint_start_time?.split(':')[1] || '0'),
+              parseInt(c.constraint_end_time?.split(':')[0] || '18') * 60 + parseInt(c.constraint_end_time?.split(':')[1] || '0')
+            ]
+          : [480, 1080], // Default: 08:00 (480 min) to 18:00 (1080 min)
         time_constraints: c.has_time_constraint
           ? {
               start: c.constraint_start_time,
