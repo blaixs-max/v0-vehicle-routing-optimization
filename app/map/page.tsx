@@ -432,6 +432,7 @@ export default function MapPage() {
   }
 
   return (
+    <>
     <DashboardLayout>
       <Suspense fallback={<Loading />}>
         <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -839,5 +840,6 @@ export default function MapPage() {
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+    </>
   )
 }
