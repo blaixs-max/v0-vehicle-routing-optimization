@@ -10,8 +10,12 @@ export default function SelectDepotPage() {
   const router = useRouter()
   const setSelectedDepot = useDepotStore((state) => state.setSelectedDepot)
 
-  const handleDepotSelect = (depotId: string) => {
+  const handleDepotSelect = async (depotId: string) => {
+    console.log("[v0] Depo seçildi:", depotId)
     setSelectedDepot(depotId)
+    // Give a moment for state to update
+    await new Promise(resolve => setTimeout(resolve, 100))
+    console.log("[v0] Ana sayfaya yönlendiriliyor...")
     router.push("/")
   }
 
