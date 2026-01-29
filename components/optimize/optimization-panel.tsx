@@ -52,6 +52,7 @@ export function OptimizationPanel() {
   const [optimizing, setOptimizing] = useState(false)
   const [result, setResult] = useState<OptimizationResult | null>(null)
   const [progress, setProgress] = useState(0)
+  const [progressMessage, setProgressMessage] = useState("Başlatılıyor...")
   const [optimizeError, setOptimizeError] = useState<string | null>(null)
   const [isSavingRoutes, setIsSavingRoutes] = useState(false)
 
@@ -184,6 +185,7 @@ export function OptimizationPanel() {
     setOptimizing(true)
     setOptimizeError(null)
     setProgress(10)
+    setProgressMessage(algorithm === "ortools" ? "Railway servisi kontrol ediliyor..." : "ORS servisi hazırlanıyor...")
     setResult(null)
 
     const depotsData = selectedDepots.map((id) => depots.find((d) => d.id === id)).filter(Boolean)
@@ -203,6 +205,34 @@ export function OptimizationPanel() {
 
     try {
       console.log("[v0] Fetching /api/optimize...")
+      console.log("[v0] Request payload size:", JSON.stringify({
+        depots: depotsData.length,
+        vehicles: vehiclesData.length,
+        customers: customersData.length,
+        orders: orders.length,
+      }))
+      
+      setProgress(20)
+      setProgressMessage("Sunucuya bağlanılıyor...")
+      
+      // Add timeout to fetch request (3 minutes)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => {
+        console.error("[v0] Request timeout after 180 seconds")
+        controller.abort()
+      }, 180000)
+      
+      // Update progress message every 10 seconds
+      const progressInterval = setInterval(() => {
+        setProgress((prev) => Math.min(prev + 5, 90))
+        setProgressMessage((prev) => {
+          if (prev.includes("bağlanılıyor")) return "Optimizasyon hesaplanıyor..."
+          if (prev.includes("hesaplanıyor")) return "Rotalar oluşturuluyor..."
+          if (prev.includes("oluşturuluyor")) return "Sonuçlar hazırlanıyor..."
+          return "Tamamlanıyor..."
+        })
+      }, 10000)
+      
       const response = await fetch("/api/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -216,9 +246,16 @@ export function OptimizationPanel() {
           maxRouteDistanceKm: maxRouteDistance,
           maxRouteTimeMin: maxRouteDuration,
         }),
+        signal: controller.signal,
       })
-
+      
+      clearTimeout(timeoutId)
+      clearInterval(progressInterval)
+      console.log("[v0] ✅ Response received")
       console.log("[v0] API response status:", response.status)
+      
+      setProgress(95)
+      setProgressMessage("Sonuçlar işleniyor...")
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -269,12 +306,22 @@ export function OptimizationPanel() {
         description: `${result.routes?.length || 0} rota oluşturuldu`,
       })
     } catch (error: any) {
-      console.error("[v0] Optimization error:", error)
+      console.error("[v0] ========== Optimization ERROR ==========")
+      console.error("[v0] Error type:", error.name)
+      console.error("[v0] Error message:", error.message)
+      console.error("[v0] Full error:", error)
+      
+      let errorMessage = error instanceof Error ? error.message : "Bilinmeyen hata"
+      
+      if (error.name === 'AbortError') {
+        errorMessage = "İstek zaman aşımına uğradı (3 dakika). Railway servisi çok uzun süre yanıt vermiyor. Lütfen Railway dashboard'u kontrol edin veya VROOM algoritmasını deneyin."
+      }
+      
       setOptimizing(false)
-      setOptimizeError(error instanceof Error ? error.message : "Bilinmeyen hata")
+      setOptimizeError(errorMessage)
       toast({
         title: "Hata",
-        description: error instanceof Error ? error.message : "Bilinmeyen hata",
+        description: errorMessage,
         variant: "destructive",
       })
     }
@@ -601,10 +648,13 @@ export function OptimizationPanel() {
             disabled={optimizing || availableVehicles.length === 0}
           >
             {optimizing ? (
-              <>
-                <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
-                Optimize Ediliyor... (Maks 5 dk) %{progress}
-              </>
+              <div className="flex flex-col items-center w-full">
+                <div className="flex items-center">
+                  <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
+                  {progressMessage}
+                </div>
+                <span className="text-xs mt-1 opacity-70">Lütfen bekleyin... (Maks 3 dk)</span>
+              </div>
             ) : (
               <>
                 <Play className="h-5 w-5 mr-2" />

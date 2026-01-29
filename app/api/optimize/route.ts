@@ -377,21 +377,29 @@ async function optimizeWithORS(
 async function warmupRailway(): Promise<void> {
   if (!process.env.RAILWAY_API_URL) {
     console.warn("[v0] RAILWAY_API_URL not configured!")
-    return
+    throw new Error("RAILWAY_API_URL environment variable yapılandırılmamış. Lütfen Vercel'de RAILWAY_API_URL'yi ekleyin veya VROOM algoritmasını kullanın.")
   }
 
   try {
     console.log("[v0] ===== RAILWAY WARMUP START =====")
     console.log("[v0] Railway URL:", process.env.RAILWAY_API_URL)
-    console.log("[v0] Attempting health check with 10s timeout...")
+    console.log("[v0] Attempting health check with 15s timeout...")
+    
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      console.error("[v0] Health check timeout after 15 seconds")
+      controller.abort()
+    }, 15000)
     
     const response = await fetch(`${process.env.RAILWAY_API_URL}/health`, {
       method: "GET",
-      signal: AbortSignal.timeout(10000), // Increased from 5s to 10s
+      signal: controller.signal,
     })
     
+    clearTimeout(timeoutId)
+    
     if (response.ok) {
-      const data = await response.json()
+      const data = await response.json().catch(() => ({ status: 'ok' }))
       console.log("[v0] ✅ Railway health check PASSED:", data)
       console.log("[v0] ===== RAILWAY READY =====")
     } else {
@@ -401,9 +409,16 @@ async function warmupRailway(): Promise<void> {
       console.error("[v0] Response:", text)
       throw new Error(`Railway health check failed with status ${response.status}`)
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("[v0] ===== RAILWAY WARMUP FAILED =====")
-    console.error("[v0] Error:", error)
+    console.error("[v0] Error type:", error.name)
+    console.error("[v0] Error message:", error.message)
+    console.error("[v0] Full error:", error)
+    
+    if (error.name === 'AbortError') {
+      throw new Error(`Railway servisi 15 saniye içinde yanıt vermedi. Olası nedenler:\n1. Railway servisi henüz başlatılmadı veya cold start yaşıyor\n2. RAILWAY_API_URL yanlış: ${process.env.RAILWAY_API_URL}\n3. Railway servisi çalışmıyor\n\nLütfen Railway dashboard'u kontrol edin veya VROOM algoritmasını kullanın.`)
+    }
+    
     throw new Error(`Railway servisi yanıt vermiyor. Railway dashboard'da servisin çalıştığını kontrol edin veya VROOM algoritmasını kullanın. URL: ${process.env.RAILWAY_API_URL} - Error: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
@@ -766,9 +781,11 @@ function findNearestDepot(firstStop: any, depots: any[]): any {
 }
 
 export async function POST(req: NextRequest) {
+  console.log("[v0] ========== POST /api/optimize STARTED ==========")
   try {
+    console.log("[v0] Parsing request body...")
     const body = await req.json()
-    console.log("[v0] POST /api/optimize called")
+    console.log("[v0] ✅ Request body parsed successfully")
     console.log("[v0] DEBUG: Request body first customer:", JSON.stringify(body.customers?.[0], null, 2))
 
     // Fetch service duration from settings
@@ -798,6 +815,7 @@ export async function POST(req: NextRequest) {
     console.log("[v0] DEBUG: requestCustomers[0]:", JSON.stringify(requestCustomers?.[0], null, 2))
 
     if (!requestDepots || !requestVehicles || !requestCustomers) {
+      console.error("[v0] ❌ Missing required data!")
       return NextResponse.json({ success: false, error: "Missing required data" }, { status: 400 })
     }
 
@@ -806,9 +824,11 @@ export async function POST(req: NextRequest) {
     const selectedCustomers = requestCustomers
 
     if (selectedDepots.length === 0 || selectedCustomers.length === 0 || availableVehicles.length === 0) {
+      console.error("[v0] ❌ Missing required fields - depots:", selectedDepots.length, "customers:", selectedCustomers.length, "vehicles:", availableVehicles.length)
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 })
     }
 
+    console.log("[v0] ✅ Validation passed")
     console.log("[v0] Algorithm:", algorithm)
     console.log("[v0] Depots:", selectedDepots.length)
     console.log("[v0] Vehicles:", availableVehicles.length)
@@ -816,29 +836,39 @@ export async function POST(req: NextRequest) {
     console.log("[v0] Orders:", orders?.length || 0)
 
     if (algorithm === "ortools") {
+      console.log("[v0] Starting Railway warmup...")
       await warmupRailway()
+      console.log("[v0] ✅ Railway warmup completed")
     }
 
     let optimization
 
     if (algorithm === "ortools") {
+      console.log("[v0] Starting OR-Tools optimization...")
       optimization = await optimizeWithRailway(selectedDepots, availableVehicles, selectedCustomers, orders || [], {
         algorithm,
         fuelPricePerLiter: fuelPrice,
         maxRouteDistanceKm: maxRouteDistance,
         maxRouteTimeMin: maxRouteTime,
       })
+      console.log("[v0] ✅ OR-Tools optimization completed")
     } else {
+      console.log("[v0] Starting ORS optimization...")
       optimization = await optimizeWithORS(selectedDepots, availableVehicles, selectedCustomers, {
         fuelPricePerLiter: fuelPrice,
         maxRouteDistanceKm: maxRouteDistance,
         maxRouteTimeMin: maxRouteTime,
       })
+      console.log("[v0] ✅ ORS optimization completed")
     }
 
+    console.log("[v0] ========== POST /api/optimize COMPLETED ==========")
     return NextResponse.json(optimization)
   } catch (error: any) {
-    console.error("[v0] Optimization error:", error)
+    console.error("[v0] ========== POST /api/optimize FAILED ==========")
+    console.error("[v0] Error type:", error.name)
+    console.error("[v0] Error message:", error.message)
+    console.error("[v0] Full error:", error)
     return NextResponse.json(
       {
         success: false,
