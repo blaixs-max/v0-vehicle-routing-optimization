@@ -1,5 +1,6 @@
 "use client"
 
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -19,11 +20,16 @@ export default function RotalarPage() {
   const routesList = routes || []
 
   if (loading) {
-    return <div className="p-8">Yükleniyor...</div>
+    return (
+      <DashboardLayout>
+        <div className="p-8">Yükleniyor...</div>
+      </DashboardLayout>
+    )
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <DashboardLayout>
+      <div className="p-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Rotalar</h1>
         <p className="text-muted-foreground">Kaydedilmiş rota geçmişi</p>
@@ -77,5 +83,6 @@ export default function RotalarPage() {
         </CardContent>
       </Card>
     </div>
+    </DashboardLayout>
   )
 }
