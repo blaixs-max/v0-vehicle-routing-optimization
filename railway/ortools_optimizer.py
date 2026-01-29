@@ -290,6 +290,12 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         transit_callback_index = routing.RegisterTransitCallback(distance_callback)
         routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
         
+        # Add fixed cost per vehicle to minimize vehicle count
+        # This makes using each vehicle "expensive" so optimizer prefers fewer vehicles
+        # 10000 units ≈ 10 km equivalent cost per vehicle
+        routing.SetFixedCostOfAllVehicles(10000)
+        print(f"[OR-Tools] Fixed vehicle cost: 10000 (prioritizes fewer vehicles)")
+        
         def demand_callback(from_index):
             from_node = manager.IndexToNode(from_index)
             return demands[from_node]
@@ -670,6 +676,10 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         transit_callback_index = routing.RegisterTransitCallback(distance_callback)
         routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
         print(f"[OR-Tools] Distance callback registered")
+        
+        # Add fixed cost per vehicle to minimize vehicle count
+        routing.SetFixedCostOfAllVehicles(10000)
+        print(f"[OR-Tools] Fixed vehicle cost: 10000 (prioritizes fewer vehicles)")
         
         def demand_callback(from_index):
             try:
