@@ -433,10 +433,13 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         # Parse results
         routes = []
         
-        # Get time dimension for duration calculation (use GetDimension to avoid crash)
-        time_dimension = routing.GetDimension('Time')
-        if not time_dimension:
-            print(f"[OR-Tools] CRITICAL WARNING: Time dimension not found! Using fallback duration calculation.")
+        # Get time dimension for duration calculation
+        try:
+            time_dimension = routing.GetDimensionOrDie('Time')
+            print(f"[OR-Tools] Time dimension found successfully")
+        except Exception as e:
+            print(f"[OR-Tools] CRITICAL WARNING: Time dimension not found! Error: {e}")
+            print(f"[OR-Tools] Using fallback duration calculation")
             time_dimension = None  # Will trigger fallback logic
         
         for vehicle_id in range(num_vehicles):
