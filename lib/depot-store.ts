@@ -15,7 +15,7 @@ export const useDepotStore = create<DepotStore>()(
       clearSelectedDepot: () => set({ selectedDepotId: null }),
     }),
     {
-      name: "depot-selection",
+      name: "depot-selection-v2", // Changed storage name to force reset
     }
   )
 )
