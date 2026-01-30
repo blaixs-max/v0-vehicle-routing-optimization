@@ -401,6 +401,45 @@ async function warmupRailway(): Promise<void> {
     if (response.ok) {
       const data = await response.json().catch(() => ({ status: 'ok' }))
       console.log("[v0] ✅ Railway health check PASSED:", data)
+      
+      // Test optimize endpoint with minimal request
+      console.log("[v0] Testing /optimize endpoint...")
+      const testController = new AbortController()
+      const testTimeoutId = setTimeout(() => {
+        console.warn("[v0] ⚠️ Optimize endpoint test timeout after 10 seconds (normal, just checking if endpoint exists)")
+        testController.abort()
+      }, 10000)
+      
+      try {
+        const testResponse = await fetch(`${process.env.RAILWAY_API_URL}/optimize`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            depots: [],
+            vehicles: [],
+            customers: [],
+            osrm_url: "https://router.project-osrm.org"
+          }),
+          signal: testController.signal,
+        })
+        
+        clearTimeout(testTimeoutId)
+        console.log("[v0] Optimize endpoint test response:", testResponse.status)
+        
+        if (testResponse.status === 404) {
+          throw new Error("Railway /optimize endpoint bulunamadı (404). Railway servisi doğru deploy edilmemiş olabilir.")
+        }
+        
+        // 400 or 500 is OK for this test - at least endpoint exists
+        console.log("[v0] ✅ Optimize endpoint erişilebilir")
+      } catch (testError: any) {
+        clearTimeout(testTimeoutId)
+        if (testError.name !== 'AbortError') {
+          console.warn("[v0] ⚠️ Optimize endpoint test failed:", testError.message)
+          // Don't throw - this is just a warning
+        }
+      }
+      
       console.log("[v0] ===== RAILWAY READY =====")
     } else {
       console.error("[v0] ❌ Railway health check FAILED")
@@ -566,7 +605,7 @@ async function optimizeWithRailway(
     }, 120000)
 
     console.log("[v0] ===== RAILWAY OPTIMIZE REQUEST START =====")
-    console.log("[v0] Railway URL:", process.env.RAILWAY_API_URL)
+    console.log("[v0] Railway URL:", process.env.RAILWAY_API_URL + "/optimize")
     console.log("[v0] Request body sample:", {
       depotCount: railwayRequest.depots.length,
       customersCount: railwayRequest.customers.length,
@@ -574,8 +613,10 @@ async function optimizeWithRailway(
       totalDemand: railwayRequest.customers.reduce((sum, c) => sum + c.demand_pallets, 0),
       totalCapacity: railwayRequest.vehicles.reduce((sum, v) => sum + v.capacity_pallets, 0),
     })
-    console.log("[v0] CRITICAL DEBUG - First customer being sent to Railway:", JSON.stringify(railwayRequest.customers[0]))
-    console.log("[v0] Setting 120 saniye timeout for Railway request...")
+    console.log("[v0] First depot:", JSON.stringify(railwayRequest.depots[0]))
+    console.log("[v0] First vehicle:", JSON.stringify(railwayRequest.vehicles[0]))
+    console.log("[v0] First customer:", JSON.stringify(railwayRequest.customers[0]))
+    console.log("[v0] Setting 120 second timeout for Railway request...")
 
     // OSRM URL'yi environment variable'dan veya default değerden al
     const osrmUrl = process.env.OSRM_URL || process.env.NEXT_PUBLIC_OSRM_URL || 'https://router.project-osrm.org'
@@ -587,6 +628,17 @@ async function optimizeWithRailway(
     }
     
     console.log("[v0] OSRM URL being sent to Railway:", osrmUrl)
+    console.log("[v0] Full request body size:", JSON.stringify(railwayRequestWithOsrm).length, "bytes")
+    console.log("[v0] Request structure:", {
+      depots: railwayRequestWithOsrm.depots?.length,
+      vehicles: railwayRequestWithOsrm.vehicles?.length,
+      customers: railwayRequestWithOsrm.customers?.length,
+      osrm_url: railwayRequestWithOsrm.osrm_url,
+      algorithm: railwayRequestWithOsrm.algorithm,
+    })
+    
+    console.log("[v0] Sending fetch request to Railway...")
+    const fetchStartTime = Date.now()
     
     const railwayResponse = await fetch(`${process.env.RAILWAY_API_URL}/optimize`, {
       method: "POST",
@@ -596,30 +648,41 @@ async function optimizeWithRailway(
       body: JSON.stringify(railwayRequestWithOsrm),
       signal: controller.signal,
     })
+    
+    const fetchDuration = Date.now() - fetchStartTime
+    console.log("[v0] Fetch completed in", fetchDuration, "ms")
 
     clearTimeout(timeoutId)
 
+    console.log("[v0] ✅ Railway response received!")
     console.log("[v0] Railway response status:", railwayResponse.status)
+    console.log("[v0] Railway response headers:", Object.fromEntries(railwayResponse.headers.entries()))
 
     if (!railwayResponse.ok) {
       const errorText = await railwayResponse.text()
-      console.error("[v0] Railway API error:", errorText)
+      console.error("[v0] ❌ Railway API error response:", errorText)
       console.error("[v0] Railway response status:", railwayResponse.status)
-      console.error("[v0] Railway response headers:", Object.fromEntries(railwayResponse.headers.entries()))
+      console.error("[v0] Railway response statusText:", railwayResponse.statusText)
       
       if (railwayResponse.status === 502 || railwayResponse.status === 503) {
-        throw new Error(`Railway OR-Tools servisi yanıt vermiyor (${railwayResponse.status}). Olası nedenler:\n1. Railway servisi çalışmıyor olabilir - Railway dashboard'u kontrol edin\n2. RAILWAY_API_URL yanlış olabilir: ${process.env.RAILWAY_API_URL}\n3. Railway servisi cold start yaşıyor olabilir - birkaç saniye bekleyip tekrar deneyin\n\nAlternatif: VROOM algoritmasını kullanabilirsiniz.`)
+        throw new Error(`Railway OR-Tools servisi yanıt vermiyor (${railwayResponse.status}). Olası nedenler:\n1. Railway servisi çalışmıyor olabilir - Railway dashboard'u kontrol edin\n2. RAILWAY_API_URL yanlış olabilir: ${process.env.RAILWAY_API_URL}\n3. Railway servisi cold start yaşıyor olabilir - birkaç saniye bekleyip tekrar deneyin\n4. Railway servisi OSRM'e erişemiyor olabilir\n\nAlternatif: VROOM algoritmasını kullanabilirsiniz.`)
       }
       
       if (railwayResponse.status === 404) {
         throw new Error(`Railway API endpoint bulunamadı (404). RAILWAY_API_URL doğru mu? ${process.env.RAILWAY_API_URL}/optimize`)
       }
       
+      if (railwayResponse.status === 500) {
+        throw new Error(`Railway servisi internal error döndü (500). Railway logs'u kontrol edin:\n${errorText}`)
+      }
+      
       throw new Error(`Railway API hatası (${railwayResponse.status}): ${errorText}`)
     }
 
+    console.log("[v0] Parsing Railway response JSON...")
     const railwayResult = await railwayResponse.json()
-    console.log("[v0] Railway optimization successful")
+    console.log("[v0] ✅ Railway optimization successful!")
+    console.log("[v0] Railway returned", railwayResult.routes?.length || 0, "routes")
 
     if (railwayResult.routes && railwayResult.routes.length > 0) {
       console.log("[v0] Railway first route keys:", Object.keys(railwayResult.routes[0]))
@@ -735,21 +798,35 @@ async function optimizeWithRailway(
     console.error("[v0] Error message:", error.message)
 
     if (error.name === "AbortError" || error.message?.includes('aborted')) {
-      throw new Error(`❌ Railway optimizasyonu 120 saniye içinde tamamlanamadı.
+      const railwayUrl = process.env.RAILWAY_API_URL || 'unknown'
+      const projectName = railwayUrl.includes('railway.app') 
+        ? railwayUrl.split('//')[1]?.split('.')[0] 
+        : 'unknown'
+      
+      throw new Error(`Railway optimizasyon servisi 120 saniye içinde yanıt vermedi (TIMEOUT).
 
-🔍 Railway URL: ${process.env.RAILWAY_API_URL}
+🔍 Railway Details:
+• URL: ${railwayUrl}
+• Project: ${projectName}
+• Endpoint: /optimize
+• Müşteri sayısı: ${railwayRequest.customers?.length || 0}
+• Araç sayısı: ${railwayRequest.vehicles?.length || 0}
 
-Olası nedenler:
-1. Railway servisi çalışmıyor veya cold start yaşıyor
-2. OSRM servisi erişilebilir değil  
-3. Railway URL yanlış yapılandırılmış
-4. Optimizasyon çok karmaşık (${railwayRequest.customers?.length || 0} müşteri)
+❌ Olası Sorunlar:
+1. Railway servisi /optimize endpoint'inde takılı kaldı
+2. OSRM servisi erişilebilir değil veya çok yavaş
+3. OR-Tools hesaplama süresi 120 saniyeyi aştı
+4. Railway servisi memory/CPU limitlerine ulaştı
+5. Railway servisi loglarında hata var
 
-✅ Çözüm önerileri:
-- Railway dashboard'da servisin çalıştığını kontrol edin
-- Railway logs'da hata mesajlarını kontrol edin
-- VROOM algoritmasını deneyin (daha hızlı ve Railway'e ihtiyaç duymaz)
-- Müşteri sayısını azaltarak test edin`)
+✅ Hemen Yapılacaklar:
+1. Railway Dashboard > Deployments > Logs kontrol edin
+2. Railway servisini restart edin
+3. OSRM_URL environment variable'ını kontrol edin
+4. Müşteri sayısını azaltarak test edin (5-10 müşteri)
+
+Railway Logs için:
+https://railway.app/project/${projectName}`)
     }
 
     throw error
