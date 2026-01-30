@@ -46,36 +46,20 @@ def get_osrm_distance_matrix(locations: List[tuple], osrm_url: str = None) -> Li
     OSRM Table API kullanarak gerçek yol mesafesi matrisi hesapla
     Returns: Mesafe matrisi (metre cinsinden)
     """
-    # For large datasets (>20 locations), skip OSRM and use Haversine directly
-    # This saves significant time (10-20 seconds per request)
-    if len(locations) > 20:
-        print(f"[OR-Tools] Large dataset ({len(locations)} locations) - skipping OSRM, using Haversine for speed")
-        matrix = []
-        for i, loc1 in enumerate(locations):
-            row = []
-            for j, loc2 in enumerate(locations):
-                if i == j:
-                    row.append(0)
-                else:
-                    dist = haversine_distance(loc1[0], loc1[1], loc2[0], loc2[1])
-                    # Add 30% to haversine to approximate real road distance
-                    row.append(int(dist * 1000 * 1.3))  # km to meters + 30% road factor
-            matrix.append(row)
-        return matrix
-    
     if not osrm_url:
         osrm_url = os.environ.get('OSRM_URL', 'https://router.project-osrm.org')
+    
+    print(f"[OR-Tools] OSRM Table API çağrılıyor: {len(locations)} nokta")
+    print(f"[OR-Tools] OSRM URL: {osrm_url}")
     
     try:
         # Koordinatları OSRM formatına çevir: lng,lat
         coords_str = ';'.join([f"{loc[1]},{loc[0]}" for loc in locations])
         url = f"{osrm_url}/table/v1/driving/{coords_str}?annotations=distance"
         
-        print(f"[OR-Tools] OSRM Table API çağrılıyor: {len(locations)} nokta")
-        print(f"[OR-Tools] OSRM URL: {osrm_url}")
-        
-        # Reduced timeout to 10 seconds for faster failure
-        response = requests.get(url, timeout=10)
+        # Increased timeout to 30 seconds for large datasets
+        print(f"[OR-Tools] OSRM request timeout: 30 seconds")
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
         
         data = response.json()
@@ -467,15 +451,16 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
             routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC
         )
         
-        # Reduced timeout to 60 seconds for faster response
-        # This ensures Railway responds within Vercel's 120s timeout
-        search_parameters.time_limit.seconds = 60
+        # Timeout set to 90 seconds - allows Railway to respond within Vercel's 180s limit
+        # This gives OR-Tools enough time while leaving buffer for OSRM and network
+        search_parameters.time_limit.seconds = 90
         search_parameters.log_search = True
         
         # Accept first feasible solution quickly
         search_parameters.solution_limit = 1
         
-        print(f"[OR-Tools] Solving with PATH_CHEAPEST_ARC + AUTOMATIC metaheuristic (60s limit)...")
+        print(f"[OR-Tools] Solving with PATH_CHEAPEST_ARC + AUTOMATIC metaheuristic (90s limit)...")
+        print(f"[OR-Tools] Target: Complete within 90s to allow Railway response before Vercel's 180s timeout")
         print(f"[OR-Tools] About to call SolveWithParameters()...")
         
         solution = routing.SolveWithParameters(search_parameters)
