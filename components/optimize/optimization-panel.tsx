@@ -236,6 +236,25 @@ export function OptimizationPanel() {
     }
 
     console.log("[v0] All validation passed, starting optimization...")
+    
+    // Warn user if using OR-Tools with offline Railway
+    if (algorithm === "ortools" && railwayStatus === "offline") {
+      const confirmContinue = window.confirm(
+        "Railway servisi çalışmıyor gibi görünüyor.\n\n" +
+        "OR-Tools optimizasyonu muhtemelen başarısız olacak (timeout).\n\n" +
+        "VROOM algoritmasını kullanmak ister misiniz?"
+      )
+      
+      if (confirmContinue) {
+        setAlgorithm("ors")
+        toast({
+          title: "Algoritma değiştirildi",
+          description: "VROOM algoritması seçildi. Şimdi optimize edebilirsiniz.",
+        })
+        return
+      }
+    }
+    
     setOptimizing(true)
     setOptimizeError(null)
     setProgress(10)
@@ -375,6 +394,7 @@ export function OptimizationPanel() {
       
       setOptimizing(false)
       setOptimizeError(errorMessage)
+      setRailwayStatus("offline") // Mark Railway as offline after timeout
       
       // Split multiline error messages for better display
       const errorLines = errorMessage.split('\n')
@@ -387,6 +407,25 @@ export function OptimizationPanel() {
         variant: "destructive",
         duration: 10000, // Show error for 10 seconds since it has important info
       })
+      
+      // If Railway timeout with OR-Tools, suggest VROOM
+      if (algorithm === "ortools" && errorMessage.includes("Railway")) {
+        setTimeout(() => {
+          const switchToVroom = window.confirm(
+            "Railway servisi yanıt vermiyor.\n\n" +
+            "VROOM algoritmasına geçmek ister misiniz?\n" +
+            "VROOM harici servise ihtiyaç duymaz ve genellikle daha hızlıdır."
+          )
+          
+          if (switchToVroom) {
+            setAlgorithm("ors")
+            toast({
+              title: "Algoritma değiştirildi",
+              description: "VROOM algoritması seçildi. Tekrar optimize edebilirsiniz.",
+            })
+          }
+        }, 1000) // Wait 1 second after error toast
+      }
     }
   }
 
@@ -543,6 +582,13 @@ export function OptimizationPanel() {
 
               {algorithm === "ortools" && (
                 <div className="space-y-3">
+                  <Alert className="bg-amber-50 border-amber-200">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-xs text-amber-800">
+                      <strong>Dikkat:</strong> OR-Tools Railway servisi gerektirir. Servis yanıt vermiyorsa (timeout), VROOM algoritmasını kullanın.
+                    </AlertDescription>
+                  </Alert>
+                  
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-xs font-medium text-blue-800 mb-2">Aktif Kısıtlar:</p>
                     <ul className="text-xs text-blue-700 space-y-1">
@@ -582,11 +628,21 @@ export function OptimizationPanel() {
                     <Alert variant="destructive">
                       <AlertTriangle className="h-4 w-4" />
                       <AlertDescription className="text-xs">
-                        Railway servisi çalışmıyor. VROOM algoritmasını kullanın.
+                        <strong>Railway servisi çalışmıyor!</strong><br/>
+                        Optimize etmek için yukarıdan VROOM algoritmasını seçin.
                       </AlertDescription>
                     </Alert>
                   )}
                 </div>
+              )}
+              
+              {algorithm === "ors" && (
+                <Alert className="bg-green-50 border-green-200">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-xs text-green-800">
+                    VROOM harici servise ihtiyaç duymaz ve genellikle daha hızlıdır.
+                  </AlertDescription>
+                </Alert>
               )}
 
               <Separator />
