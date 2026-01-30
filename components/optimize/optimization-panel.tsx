@@ -168,10 +168,6 @@ export function OptimizationPanel() {
       setTestingRailway(false)
     }
   }
-    } catch (error) {
-      console.error("Failed to fetch fuel price:", error)
-    }
-  }
 
   async function handleSaveCoordinates(updates: { id: string; lat: number; lng: number }[]) {
     saveCustomerCoordinates(updates)
