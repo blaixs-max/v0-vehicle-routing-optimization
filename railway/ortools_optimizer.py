@@ -372,11 +372,11 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
         
         time_callback_index = routing.RegisterTransitCallback(time_callback)
         
-        # Time dimension: max 1200 minutes per route (20 hours) - allows for realistic work day
+        # Time dimension: max 1440 minutes per route (24 hours)
         routing.AddDimension(
             time_callback_index,
-            60,  # slack: 60 minutes (1 hour)
-            1200,  # max: 1200 minutes (20 hours) per vehicle - enforces time limit
+            120,  # slack: 120 minutes (2 hours)
+            1440,  # max: 1440 minutes (24 hours) per vehicle
             True,  # start cumul to zero
             'Time'
         )
@@ -515,16 +515,16 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                         route_duration_min += stop.get("service_duration", 30)
                     print(f"[OR-Tools] WARNING: Using fallback duration calculation for vehicle {vehicle_id}: {route_duration_min} min")
                 
-                # Validate duration against 1200-minute target (1260 max with slack)
-                if route_duration_min > 1200:
+                # Validate duration against 1440-minute target (1560 max with slack)
+                if route_duration_min > 1440:
                     print(f"[OR-Tools] INFO: Route for vehicle {vehicle_id} uses slack time")
-                    print(f"[OR-Tools]   Duration: {route_duration_min} min (target: 1200, max: 1260)")
+                    print(f"[OR-Tools]   Duration: {route_duration_min} min (target: 1440, max: 1560)")
                     print(f"[OR-Tools]   Distance: {route_distance_km:.2f} km")
                     print(f"[OR-Tools]   Stops: {len(route_stops)}")
                     
-                    # If over 1260, this should not happen due to hard constraint
-                    if route_duration_min > 1260:
-                        print(f"[OR-Tools] ERROR: Route exceeds maximum allowed time of 1260 minutes (with slack)!")
+                    # If over 660, this should not happen due to hard constraint
+                    if route_duration_min > 660:
+                        print(f"[OR-Tools] ERROR: Route exceeds maximum allowed time of 660 minutes!")
                 
                 fuel_cost = (route_distance_km / 100) * fuel_consumption * fuel_price
                 distance_cost = route_distance_km * 2.5
@@ -532,8 +532,8 @@ def _optimize_single_depot(primary_depot: dict, all_depots: list, customers: lis
                 toll_cost = route_distance_km * 0.5
                 total_cost = fuel_cost + distance_cost + fixed_cost + toll_cost
                 
-                # Cap duration at 1200 for display (even if slack was used)
-                display_duration = min(route_duration_min, 1200)
+                # Cap duration at 600 for display (even if slack was used)
+                display_duration = min(route_duration_min, 1440)
                 
                 routes.append({
                     "vehicle_id": vehicle["id"],
@@ -722,17 +722,17 @@ def _optimize_multi_depot(depots: list, customers: list, vehicles: list, fuel_pr
         
         time_callback_index = routing.RegisterTransitCallback(time_callback)
         
-        # Time dimension: max 1200 minutes per route (20 hours total including breaks)
+        # Time dimension: max 1440 minutes per route (24 hours total including breaks)
         routing.AddDimension(
             time_callback_index,
-            60,  # slack: 60 minutes (1 hour)
-            1200,  # Max 1200 minutes (20 hours) per vehicle - enforces time limit
+            120,  # slack: 120 minutes (2 hours)
+            1440,  # Max 1440 minutes (24 hours) per vehicle
             True,  # Start cumul to zero
             'Time'
         )
         time_dimension = routing.GetDimensionOrDie('Time')
         
-        print(f"[OR-Tools] Time dimension added (max 20h per route, breaks included in route time)")
+        print(f"[OR-Tools] Time dimension added (max 10h per route, breaks included in route time)")
         
         # Add time window constraints
         # for location_idx, time_window in enumerate(time_windows):
