@@ -75,12 +75,8 @@ def health():
 
 @app.post("/optimize", response_model=OptimizeResponse)
 def optimize(request: OptimizeRequest):
-    import time
-    start_time = time.time()
-    
     try:
-        print(f"[Railway] ========== OPTIMIZATION REQUEST RECEIVED ==========")
-        print(f"[Railway] Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"[Railway] ========== OPTIMIZATION REQUEST ==========")
         print(f"[Railway] Depots: {len(request.depots)}")
         print(f"[Railway] Customers: {len(request.customers)}")
         print(f"[Railway] Vehicles: {len(request.vehicles)}")
@@ -93,20 +89,10 @@ def optimize(request: OptimizeRequest):
         print(f"[Railway] Total capacity: {total_capacity} pallets")
         print(f"[Railway] Demand/Capacity ratio: {total_demand/total_capacity:.2f}" if total_capacity > 0 else "[Railway] WARNING: Total capacity is 0!")
         
-        # Validate input
-        if len(request.customers) == 0:
-            raise ValueError("No customers provided")
-        if len(request.vehicles) == 0:
-            raise ValueError("No vehicles provided")
-        if len(request.depots) == 0:
-            raise ValueError("No depots provided")
-        
         # OSRM URL'yi environment variable'a kaydet (optimizer içinde kullanılacak)
         if request.osrm_url:
             os.environ['OSRM_URL'] = request.osrm_url
             print(f"[Railway] Using OSRM URL: {request.osrm_url}")
-        
-        print(f"[Railway] Starting OR-Tools optimization...")
         
         # OR-Tools optimizer'ı çağır
         result = optimize_routes(
@@ -116,11 +102,7 @@ def optimize(request: OptimizeRequest):
             fuel_price=request.fuel_price
         )
         
-        elapsed_time = time.time() - start_time
-        print(f"[Railway] ========== OPTIMIZATION SUCCESSFUL ==========")
-        print(f"[Railway] Routes generated: {len(result['routes'])}")
-        print(f"[Railway] Computation time: {elapsed_time:.2f}s")
-        print(f"[Railway] Returning response to Vercel...")
+        print(f"[Railway] Optimization successful: {len(result['routes'])} routes generated")
         
         return OptimizeResponse(
             success=True,
@@ -129,11 +111,7 @@ def optimize(request: OptimizeRequest):
         )
     
     except Exception as e:
-        elapsed_time = time.time() - start_time
-        print(f"[Railway] ========== OPTIMIZATION FAILED ==========")
-        print(f"[Railway] Error after {elapsed_time:.2f}s: {str(e)}")
-        import traceback
-        print(f"[Railway] Traceback: {traceback.format_exc()}")
+        print(f"[Railway] ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
