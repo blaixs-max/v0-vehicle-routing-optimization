@@ -107,19 +107,23 @@ def optimize(request: OptimizeRequest):
             print(f"[Railway] Using OSRM URL: {request.osrm_url}")
         
         print(f"[Railway] Starting OR-Tools optimization...")
+        print(f"[Railway] Request timeout expectation: 120 seconds (Vercel limit)")
         
         # OR-Tools optimizer'ı çağır
+        optimization_start = time.time()
         result = optimize_routes(
             customers=[c.dict() for c in request.customers],
             vehicles=[v.dict() for v in request.vehicles],
             depots=[d.dict() for d in request.depots],
             fuel_price=request.fuel_price
         )
+        optimization_time = time.time() - optimization_start
         
         elapsed_time = time.time() - start_time
         print(f"[Railway] ========== OPTIMIZATION SUCCESSFUL ==========")
         print(f"[Railway] Routes generated: {len(result['routes'])}")
-        print(f"[Railway] Computation time: {elapsed_time:.2f}s")
+        print(f"[Railway] Pure optimization time: {optimization_time:.2f}s")
+        print(f"[Railway] Total time (including OSRM): {elapsed_time:.2f}s")
         print(f"[Railway] Returning response to Vercel...")
         
         return OptimizeResponse(
@@ -132,9 +136,18 @@ def optimize(request: OptimizeRequest):
         elapsed_time = time.time() - start_time
         print(f"[Railway] ========== OPTIMIZATION FAILED ==========")
         print(f"[Railway] Error after {elapsed_time:.2f}s: {str(e)}")
+        print(f"[Railway] Error type: {type(e).__name__}")
+        
         import traceback
-        print(f"[Railway] Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        traceback_str = traceback.format_exc()
+        print(f"[Railway] Traceback: {traceback_str}")
+        
+        # Check if timeout related
+        error_message = str(e)
+        if "timeout" in error_message.lower() or elapsed_time > 100:
+            error_message = f"Optimization timeout after {elapsed_time:.1f}s. Try reducing customer count or using VROOM algorithm. Error: {error_message}"
+        
+        raise HTTPException(status_code=500, detail=error_message)
 
 if __name__ == "__main__":
     import uvicorn
