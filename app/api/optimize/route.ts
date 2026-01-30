@@ -557,13 +557,16 @@ async function optimizeWithRailway(
 
   try {
     const controller = new AbortController()
-    // Reduce timeout to 90 seconds - Railway should respond faster, if not we fail fast
+    // Timeout set to 120 seconds for complex optimizations
     const timeoutId = setTimeout(() => {
-      console.error("[v0] Railway request timed out after 90 seconds")
+      console.error("[v0] ⏱️ Railway request timed out after 120 seconds")
+      console.error("[v0] Railway URL:", process.env.RAILWAY_API_URL)
+      console.error("[v0] Railway servisi yanıt vermedi - lütfen Railway dashboard'u kontrol edin")
       controller.abort()
-    }, 90000)
+    }, 120000)
 
-    console.log("[v0] Calling Railway API:", process.env.RAILWAY_API_URL)
+    console.log("[v0] ===== RAILWAY OPTIMIZE REQUEST START =====")
+    console.log("[v0] Railway URL:", process.env.RAILWAY_API_URL)
     console.log("[v0] Request body sample:", {
       depotCount: railwayRequest.depots.length,
       customersCount: railwayRequest.customers.length,
@@ -572,7 +575,7 @@ async function optimizeWithRailway(
       totalCapacity: railwayRequest.vehicles.reduce((sum, v) => sum + v.capacity_pallets, 0),
     })
     console.log("[v0] CRITICAL DEBUG - First customer being sent to Railway:", JSON.stringify(railwayRequest.customers[0]))
-    console.log("[v0] Setting 120s timeout for Railway request...")
+    console.log("[v0] Setting 120 saniye timeout for Railway request...")
 
     // OSRM URL'yi environment variable'dan veya default değerden al
     const osrmUrl = process.env.OSRM_URL || process.env.NEXT_PUBLIC_OSRM_URL || 'https://router.project-osrm.org'
@@ -732,7 +735,21 @@ async function optimizeWithRailway(
     console.error("[v0] Error message:", error.message)
 
     if (error.name === "AbortError" || error.message?.includes('aborted')) {
-      throw new Error("Railway optimizasyonu 90 saniye içinde tamamlanamadı. Olası nedenler:\n1. Railway servisi çok yavaş yanıt veriyor veya cold start yaşıyor\n2. Railway servisi çalışmıyor veya hatalı\n3. OSRM servisi erişilebilir değil\n\nÖneriler:\n- Railway dashboard'da servisi kontrol edin\n- VROOM algoritmasını deneyin (daha hızlı)\n- Müşteri sayısını azaltarak test edin")
+      throw new Error(`❌ Railway optimizasyonu 120 saniye içinde tamamlanamadı.
+
+🔍 Railway URL: ${process.env.RAILWAY_API_URL}
+
+Olası nedenler:
+1. Railway servisi çalışmıyor veya cold start yaşıyor
+2. OSRM servisi erişilebilir değil  
+3. Railway URL yanlış yapılandırılmış
+4. Optimizasyon çok karmaşık (${railwayRequest.customers?.length || 0} müşteri)
+
+✅ Çözüm önerileri:
+- Railway dashboard'da servisin çalıştığını kontrol edin
+- Railway logs'da hata mesajlarını kontrol edin
+- VROOM algoritmasını deneyin (daha hızlı ve Railway'e ihtiyaç duymaz)
+- Müşteri sayısını azaltarak test edin`)
     }
 
     throw error

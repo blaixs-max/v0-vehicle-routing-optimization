@@ -69,6 +69,8 @@ export function OptimizationPanel() {
   const [maxRouteDuration, setMaxRouteDuration] = useState(600)
   const [useRealDistances, setUseRealDistances] = useState(true)
   const [algorithm, setAlgorithm] = useState<"ors" | "ortools">("ortools")
+  const [testingRailway, setTestingRailway] = useState(false)
+  const [railwayStatus, setRailwayStatus] = useState<"unknown" | "online" | "offline">("unknown")
 
   const loading = depotsLoading || vehiclesLoading || customersLoading
   const depots = depotsData || []
@@ -105,11 +107,67 @@ export function OptimizationPanel() {
 
   async function fetchFuelPrice() {
     try {
-      const fuelRes = await fetch("/api/fuel-price")
-      if (fuelRes.ok) {
-        const fuelData = await fuelRes.json()
-        setFuelPrice(fuelData.price || 47.5)
+      const response = await fetch("/api/fuel-price")
+      if (response.ok) {
+        const data = await response.json()
+        setFuelPrice(data.price)
       }
+    } catch (error) {
+      console.error("[v0] Failed to fetch fuel price:", error)
+    }
+  }
+
+  async function testRailwayConnection() {
+    setTestingRailway(true)
+    setRailwayStatus("unknown")
+    
+    try {
+      console.log("[v0] Testing Railway connection...")
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
+      
+      const response = await fetch("/api/test-railway", {
+        signal: controller.signal,
+      })
+      
+      clearTimeout(timeoutId)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setRailwayStatus("online")
+        showToast({
+          title: "✅ Railway Bağlantısı Başarılı",
+          description: `Railway servisi çalışıyor!\nURL: ${data.url}\nDurum: ${data.status}`,
+          variant: "success",
+        })
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setRailwayStatus("offline")
+        showToast({
+          title: "❌ Railway Bağlantısı Başarısız",
+          description: errorData.error || "Railway servisi yanıt vermiyor",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      console.error("[v0] Railway test error:", error)
+      setRailwayStatus("offline")
+      
+      let errorMessage = "Railway servisi test edilemedi"
+      if (error.name === 'AbortError') {
+        errorMessage = "Railway servisi 10 saniye içinde yanıt vermedi"
+      }
+      
+      showToast({
+        title: "❌ Railway Test Başarısız",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setTestingRailway(false)
+    }
+  }
     } catch (error) {
       console.error("Failed to fetch fuel price:", error)
     }
@@ -488,19 +546,50 @@ export function OptimizationPanel() {
               </div>
 
               {algorithm === "ortools" && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs font-medium text-blue-800 mb-2">Aktif Kısıtlar:</p>
-                  <ul className="text-xs text-blue-700 space-y-1">
-                    <li>✓ Mesafe optimizasyonu</li>
-                    <li>✓ Kapasite kısıtları</li>
-                    <li>✓ Araç-depo eşleştirme</li>
-                  </ul>
-                  <p className="text-xs font-medium text-blue-800 mt-2 mb-1">Test için Kapalı:</p>
-                  <ul className="text-xs text-blue-700 space-y-1">
-                    <li>○ Zaman pencereleri</li>
-                    <li>○ Araç tipi kısıtları</li>
-                    <li>○ Mola kuralları</li>
-                  </ul>
+                <div className="space-y-3">
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs font-medium text-blue-800 mb-2">Aktif Kısıtlar:</p>
+                    <ul className="text-xs text-blue-700 space-y-1">
+                      <li>✓ Mesafe optimizasyonu</li>
+                      <li>✓ Kapasite kısıtları</li>
+                      <li>✓ Araç-depo eşleştirme</li>
+                    </ul>
+                    <p className="text-xs font-medium text-blue-800 mt-2 mb-1">Test için Kapalı:</p>
+                    <ul className="text-xs text-blue-700 space-y-1">
+                      <li>○ Zaman pencereleri</li>
+                      <li>○ Araç tipi kısıtları</li>
+                      <li>○ Mola kuralları</li>
+                    </ul>
+                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={testRailwayConnection}
+                    disabled={testingRailway}
+                    className="w-full"
+                  >
+                    {testingRailway ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Railway Test Ediliyor...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className={`h-4 w-4 mr-2 ${railwayStatus === 'online' ? 'text-green-500' : railwayStatus === 'offline' ? 'text-red-500' : ''}`} />
+                        Railway Servisini Test Et
+                      </>
+                    )}
+                  </Button>
+                  
+                  {railwayStatus === "offline" && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription className="text-xs">
+                        Railway servisi çalışmıyor. VROOM algoritmasını kullanın.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </div>
               )}
 
